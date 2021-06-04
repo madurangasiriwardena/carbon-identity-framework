@@ -38,7 +38,21 @@ public abstract class AbstractApplicationMgtListener implements ApplicationMgtLi
         return true;
     }
 
+    public boolean doPreCreateApplicationWithUserId(ServiceProvider serviceProvider, String tenantDomain,
+                                                   String userId)
+            throws IdentityApplicationManagementException {
+
+        return true;
+    }
+
     public boolean doPostCreateApplication(ServiceProvider serviceProvider, String tenantDomain, String userName)
+            throws IdentityApplicationManagementException {
+
+        return true;
+    }
+
+    public boolean doPostCreateApplicationWithUserId(ServiceProvider serviceProvider, String tenantDomain,
+                                                     String userId)
             throws IdentityApplicationManagementException {
 
         return true;

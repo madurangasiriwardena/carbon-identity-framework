@@ -118,6 +118,7 @@ public class ApplicationMgtUtil {
             This means the configuration does not exist in the identity.xml. In that case, true needs to be
             returned to preserve backward compatibility.
              */
+            //TODO is this correct?
             return true;
         }
         return Boolean.parseBoolean(allowRoleValidationProperty);
@@ -143,6 +144,7 @@ public class ApplicationMgtUtil {
      * @return
      * @throws IdentityApplicationManagementException
      */
+    @Deprecated
     public static boolean isUserAuthorized(String applicationName, String username)
             throws IdentityApplicationManagementException {
 
@@ -176,6 +178,50 @@ public class ApplicationMgtUtil {
         } catch (UserStoreException e) {
             throw new IdentityApplicationManagementException("Error while checking authorization for user: " +
                     username + " for application: " + applicationName, e);
+        }
+        return false;
+    }
+
+    /**
+     * @param applicationName
+     * @param userId
+     * @return
+     * @throws IdentityApplicationManagementException
+     */
+    public static boolean isUserAuthorizedWithUserId(String applicationName, String userId)
+            throws IdentityApplicationManagementException {
+
+        boolean validateRoles = validateRoles();
+        if (!validateRoles) {
+            if (log.isDebugEnabled()) {
+                log.debug(String.format("Validating user with application roles is disabled. Therefore, " +
+                        "user: %s will be authorized for application: %s", userId, applicationName));
+            }
+            return true;
+        }
+        String applicationRoleName = getAppRoleName(applicationName);
+        try {
+            if (log.isDebugEnabled()) {
+                log.debug("Checking whether user has role : " + applicationRoleName + " by retrieving role list of " +
+                        "user : " + userId);
+            }
+
+            UserStoreManager userStoreManager = CarbonContext.getThreadLocalCarbonContext().getUserRealm()
+                    .getUserStoreManager();
+            // TODO do we need to check the type here?
+            if (userStoreManager instanceof AbstractUserStoreManager) {
+                return ((AbstractUserStoreManager) userStoreManager).isUserInRoleWithID(userId, applicationRoleName);
+            }
+
+//            String[] userRoles = userStoreManager.getRoleListOfUser(username);
+//            for (String userRole : userRoles) {
+//                if (applicationRoleName.equals(userRole)) {
+//                    return true;
+//                }
+//            }
+        } catch (UserStoreException e) {
+            throw new IdentityApplicationManagementException("Error while checking authorization for user: " +
+                    userId + " for application: " + applicationName, e);
         }
         return false;
     }
@@ -767,11 +813,11 @@ public class ApplicationMgtUtil {
         }
     }
 
-    public static void startTenantFlow(String tenantDomain, String userName)
+    public static void startTenantFlow(String tenantDomain, String userid)
             throws IdentityApplicationManagementException {
 
         startTenantFlow(tenantDomain);
-        PrivilegedCarbonContext.getThreadLocalCarbonContext().setUsername(userName);
+        PrivilegedCarbonContext.getThreadLocalCarbonContext().setUserId(userid);
     }
 
     public static void startTenantFlow(String tenantDomain) throws IdentityApplicationManagementException {

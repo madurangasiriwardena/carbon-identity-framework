@@ -46,4 +46,8 @@ public interface ApplicationValidator {
      */
     List<String> validateApplication(ServiceProvider serviceProvider, String tenantDomain, String username)
             throws IdentityApplicationManagementException;
+
+    //TODO how to handle method addition?
+    List<String> validateApplicationWithUserId(ServiceProvider serviceProvider, String tenantDomain, String userId)
+            throws IdentityApplicationManagementException;
 }

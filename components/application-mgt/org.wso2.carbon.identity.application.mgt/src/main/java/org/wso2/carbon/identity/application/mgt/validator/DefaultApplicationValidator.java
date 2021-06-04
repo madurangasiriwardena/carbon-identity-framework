@@ -72,7 +72,7 @@ import static org.wso2.carbon.user.mgt.UserMgtConstants.APPLICATION_DOMAIN;
  */
 public class DefaultApplicationValidator implements ApplicationValidator {
 
-    private static Log log = LogFactory.getLog(DefaultApplicationValidator.class);
+    private static final Log log = LogFactory.getLog(DefaultApplicationValidator.class);
 
     private static final String AUTHENTICATOR_NOT_AVAILABLE = "Authenticator %s is not available in the server.";
     private static final String AUTHENTICATOR_NOT_CONFIGURED =
@@ -101,6 +101,12 @@ public class DefaultApplicationValidator implements ApplicationValidator {
     public List<String> validateApplication(ServiceProvider serviceProvider, String tenantDomain,
                                             String username) throws IdentityApplicationManagementException {
 
+        return validateApplication(serviceProvider, tenantDomain);
+    }
+
+    private List<String> validateApplication(ServiceProvider serviceProvider, String tenantDomain)
+            throws IdentityApplicationManagementException {
+
         List<String> validationErrors = new ArrayList<>();
         validateDiscoverabilityConfigs(validationErrors, serviceProvider);
         validateInboundAuthenticationConfig(serviceProvider.getInboundAuthenticationConfig(), tenantDomain,
@@ -118,6 +124,14 @@ public class DefaultApplicationValidator implements ApplicationValidator {
         validateRoleConfigs(validationErrors, serviceProvider.getPermissionAndRoleConfig(), tenantDomain);
 
         return validationErrors;
+    }
+
+    @Override
+    public List<String> validateApplicationWithUserId(ServiceProvider serviceProvider,
+                                                      String tenantDomain, String userId)
+            throws IdentityApplicationManagementException {
+
+        return validateApplication(serviceProvider, tenantDomain);
     }
 
     private void validateDiscoverabilityConfigs(List<String> validationErrors,

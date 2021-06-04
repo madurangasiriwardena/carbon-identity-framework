@@ -61,6 +61,18 @@ public interface ApplicationMgtListener {
             throws IdentityApplicationManagementException;
 
     /**
+     * Define any additional actions before creating an application
+     *
+     * @param serviceProvider Created Service Provider
+     * @param tenantDomain    Tenant domain of the user
+     * @param userId          User id of the user
+     * @return Whether execution of this method of the underlying UserStoreManager must happen.
+     * @throws IdentityApplicationManagementException
+     */
+    public boolean doPreCreateApplicationWithUserId(ServiceProvider serviceProvider, String tenantDomain, String userId)
+            throws IdentityApplicationManagementException;
+
+    /**
      * Define any additional actions after creating an application
      *
      * @param serviceProvider
@@ -70,6 +82,19 @@ public interface ApplicationMgtListener {
      * @throws IdentityApplicationManagementException
      */
     public boolean doPostCreateApplication(ServiceProvider serviceProvider, String tenantDomain, String userName)
+            throws IdentityApplicationManagementException;
+
+    /**
+     * Define any additional actions after creating an application
+     *
+     * @param serviceProvider Created Service Provider
+     * @param tenantDomain    Tenant domain of the user
+     * @param userId          User id of the user
+     * @return Whether execution of this method of the underlying UserStoreManager must happen.
+     * @throws IdentityApplicationManagementException
+     */
+    public boolean doPostCreateApplicationWithUserId(ServiceProvider serviceProvider, String tenantDomain,
+                                                     String userId)
             throws IdentityApplicationManagementException;
 
     /**

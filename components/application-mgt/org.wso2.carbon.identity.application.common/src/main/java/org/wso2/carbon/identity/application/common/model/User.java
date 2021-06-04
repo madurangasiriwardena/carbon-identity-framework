@@ -75,6 +75,7 @@ public class User implements Serializable {
             } else if ("UserName".equalsIgnoreCase(member.getLocalName())) {
                 user.setUserName(member.getText());
             } else if ("UserID".equalsIgnoreCase(member.getLocalName())) {
+                //TODO is there any place that load the user from file?
                 user.setUserId(member.getText());
             }
         }

@@ -53,7 +53,18 @@ public class ApplicationMgtAuditLogger extends AbstractApplicationMgtListener {
         return true;
     }
 
+    @Override
+    public boolean doPostCreateApplicationWithUserId(ServiceProvider serviceProvider, String tenantDomain, String userId)
+            throws IdentityApplicationManagementException {
 
+        int appId = getAppId(serviceProvider);
+        String name = getApplicationName(serviceProvider);
+        // Append tenant domain to username.
+        String initiator = buildInitiatorUsername(tenantDomain, userId);
+
+        audit.info(String.format(AUDIT_MESSAGE, initiator, "Add-Application", appId, name, SUCCESS));
+        return true;
+    }
 
     @Override
     public boolean doPostUpdateApplication(ServiceProvider serviceProvider, String tenantDomain, String userName)

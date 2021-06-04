@@ -108,7 +108,7 @@ public class ApplicationConstants {
         public static final String APP_NAME = "APP_NAME";
         public static final String DESCRIPTION = "DESCRIPTION";
 
-        public static final String USERNAME = "USERNAME";
+        public static final String USER_ID = "USER_ID";
         public static final String USER_STORE = "USER_STORE";
         public static final String TENANT_ID = "TENANT_ID";
 

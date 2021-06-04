@@ -73,8 +73,13 @@ public abstract class ApplicationManagementService implements ApplicationPaginat
      * @return created service provider
      * @throws IdentityApplicationManagementException
      */
+    @Deprecated
     public abstract ServiceProvider createApplicationWithTemplate(ServiceProvider serviceProvider, String tenantDomain,
                                                                   String username, String templateName)
+            throws IdentityApplicationManagementException;
+
+    public abstract ServiceProvider createApplication(ServiceProvider serviceProvider, String tenantDomain,
+                                             String userId, String templateName)
             throws IdentityApplicationManagementException;
 
     /**

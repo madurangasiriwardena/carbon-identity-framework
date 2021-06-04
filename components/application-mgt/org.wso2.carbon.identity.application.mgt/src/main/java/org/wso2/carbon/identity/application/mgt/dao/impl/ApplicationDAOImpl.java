@@ -409,18 +409,19 @@ public class ApplicationDAOImpl extends AbstractApplicationDAOImpl implements Pa
                                                                        String tenantDomain) throws SQLException {
 
         int tenantID = IdentityTenantUtil.getTenantId(tenantDomain);
-        String qualifiedUsername = CarbonContext.getThreadLocalCarbonContext().getUsername();
+        //TODO do we need to check the user id here, or do we need to populate the user is in the ServiceProvider
+        // object?
+        String userId = CarbonContext.getThreadLocalCarbonContext().getUserId();
         if (LOCAL_SP.equals(application.getApplicationName())) {
-            qualifiedUsername = CarbonConstants.REGISTRY_SYSTEM_USERNAME;
+            // TODO what would be the id here?
+            userId = CarbonConstants.REGISTRY_SYSTEM_USERNAME;
         }
 
-        String username = UserCoreUtil.removeDomainFromName(qualifiedUsername);
-        String userStoreDomain = IdentityUtil.extractDomainFromName(qualifiedUsername);
         String applicationName = application.getApplicationName();
         String description = application.getDescription();
 
         if (log.isDebugEnabled()) {
-            log.debug("Creating Application " + applicationName + " for user " + qualifiedUsername);
+            log.debug("Creating Application " + applicationName + " for user " + userId);
         }
 
         PreparedStatement storeAppPrepStmt = null;
@@ -435,18 +436,17 @@ public class ApplicationDAOImpl extends AbstractApplicationDAOImpl implements Pa
             // TENANT_ID, APP_NAME, USER_STORE, USERNAME, DESCRIPTION, AUTH_TYPE
             storeAppPrepStmt.setInt(1, tenantID);
             storeAppPrepStmt.setString(2, applicationName);
-            storeAppPrepStmt.setString(3, userStoreDomain);
-            storeAppPrepStmt.setString(4, username);
-            storeAppPrepStmt.setString(5, description);
+            storeAppPrepStmt.setString(3, userId);
+            storeAppPrepStmt.setString(4, description);
             // by default authentication type would be default.
             // default authenticator is defined system-wide - in the configuration file.
-            storeAppPrepStmt.setString(6, ApplicationConstants.AUTH_TYPE_DEFAULT);
+            storeAppPrepStmt.setString(5, ApplicationConstants.AUTH_TYPE_DEFAULT);
+            storeAppPrepStmt.setString(6, "0");
             storeAppPrepStmt.setString(7, "0");
             storeAppPrepStmt.setString(8, "0");
-            storeAppPrepStmt.setString(9, "0");
-            storeAppPrepStmt.setString(10, resourceId);
-            storeAppPrepStmt.setString(11, application.getImageUrl());
-            storeAppPrepStmt.setString(12, application.getAccessUrl());
+            storeAppPrepStmt.setString(9, resourceId);
+            storeAppPrepStmt.setString(10, application.getImageUrl());
+            storeAppPrepStmt.setString(11, application.getAccessUrl());
             storeAppPrepStmt.execute();
 
             results = storeAppPrepStmt.getGeneratedKeys();
@@ -941,7 +941,7 @@ public class ApplicationDAOImpl extends AbstractApplicationDAOImpl implements Pa
             statement.setString(ApplicationTableColumns.ACCESS_URL, serviceProvider.getAccessUrl());
             if (isValidUserForOwnerUpdate) {
                 User owner = serviceProvider.getOwner();
-                statement.setString(ApplicationTableColumns.USERNAME, owner.getUserName());
+                statement.setString(ApplicationTableColumns.USER_ID, owner.getUserId());
                 statement.setString(ApplicationTableColumns.USER_STORE, owner.getUserStoreDomain());
             }
             statement.setInt(ApplicationTableColumns.TENANT_ID, tenantID);
@@ -2213,7 +2213,7 @@ public class ApplicationDAOImpl extends AbstractApplicationDAOImpl implements Pa
                 serviceProvider.setDiscoverable(getBooleanValue(rs.getString(ApplicationTableColumns.IS_DISCOVERABLE)));
 
                 User owner = new User();
-                owner.setUserName(rs.getString(ApplicationTableColumns.USERNAME));
+                owner.setUserName(rs.getString(ApplicationTableColumns.USER_ID));
                 owner.setUserStoreDomain(rs.getString(ApplicationTableColumns.USER_STORE));
                 owner.setTenantDomain(IdentityTenantUtil.getTenantDomain(rs.getInt(ApplicationTableColumns.TENANT_ID)));
                 serviceProvider.setOwner(owner);
@@ -5014,7 +5014,7 @@ public class ApplicationDAOImpl extends AbstractApplicationDAOImpl implements Pa
         basicInfo.setImageUrl(appNameResultSet.getString(ApplicationTableColumns.IMAGE_URL));
         basicInfo.setAccessUrl(appNameResultSet.getString(ApplicationTableColumns.ACCESS_URL));
 
-        String username = appNameResultSet.getString(ApplicationTableColumns.USERNAME);
+        String username = appNameResultSet.getString(ApplicationTableColumns.USER_ID);
         String userStoreDomain = appNameResultSet.getString(ApplicationTableColumns.USER_STORE);
         int tenantId = appNameResultSet.getInt(ApplicationTableColumns.TENANT_ID);
 

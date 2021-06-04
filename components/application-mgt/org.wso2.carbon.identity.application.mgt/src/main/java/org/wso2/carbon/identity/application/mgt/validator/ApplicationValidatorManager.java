@@ -38,19 +38,19 @@ public class ApplicationValidatorManager {
      *
      * @param serviceProvider   Service provider.
      * @param tenantDomain      Tenant domain name corresponding to the tenant.
-     * @param username          The user who was invoking the application action.
+     * @param userId            The user who was invoking the application action.
      *
      * @throws IdentityApplicationManagementException IdentityApplicationManagementException
      */
     public void validateSPConfigurations(ServiceProvider serviceProvider, String tenantDomain,
-                                         String username) throws IdentityApplicationManagementException {
+                                         String userId) throws IdentityApplicationManagementException {
 
         List<String> validationErrors = new ArrayList<>();
 
         Collection<ApplicationValidator> validators =
                 ApplicationMgtListenerServiceComponent.getApplicationValidators();
         for (ApplicationValidator validator : validators) {
-            validationErrors.addAll(validator.validateApplication(serviceProvider, tenantDomain, username));
+            validationErrors.addAll(validator.validateApplicationWithUserId(serviceProvider, tenantDomain, userId));
         }
 
         if (!validationErrors.isEmpty()) {

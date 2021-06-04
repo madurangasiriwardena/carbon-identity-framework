@@ -26,16 +26,16 @@ package org.wso2.carbon.identity.application.mgt;
 public class ApplicationMgtDBQueries {
 
     // STORE Queries
-    public static final String STORE_BASIC_APPINFO = "INSERT INTO SP_APP (TENANT_ID, APP_NAME, USER_STORE, USERNAME, " +
+    public static final String STORE_BASIC_APPINFO = "INSERT INTO SP_APP (TENANT_ID, APP_NAME, USER_ID, " +
             "DESCRIPTION, AUTH_TYPE, IS_USE_TENANT_DOMAIN_SUBJECT, ENABLE_AUTHORIZATION,IS_USE_USER_DOMAIN_SUBJECT, " +
             "UUID, IMAGE_URL, ACCESS_URL) " +
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)";
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?)";
     public static final String UPDATE_BASIC_APPINFO = "UPDATE SP_APP SET APP_NAME=:APP_NAME;, " +
             "DESCRIPTION=:DESCRIPTION;, IS_SAAS_APP=:IS_SAAS_APP;, IS_DISCOVERABLE=:IS_DISCOVERABLE;, " +
             "IMAGE_URL=:IMAGE_URL;, ACCESS_URL=:ACCESS_URL; WHERE TENANT_ID=:TENANT_ID; AND ID=:ID;";
     public static final String UPDATE_BASIC_APPINFO_WITH_OWNER_UPDATE = "UPDATE SP_APP SET APP_NAME=:APP_NAME;, " +
             "DESCRIPTION=:DESCRIPTION;, IS_SAAS_APP=:IS_SAAS_APP;, IS_DISCOVERABLE=:IS_DISCOVERABLE;, " +
-            "USERNAME=:USERNAME;, USER_STORE=:USER_STORE;, IMAGE_URL=:IMAGE_URL;, " +
+            "USER_ID=:USER_ID;, USER_STORE=:USER_STORE;, IMAGE_URL=:IMAGE_URL;, " +
             "ACCESS_URL=:ACCESS_URL; WHERE TENANT_ID=:TENANT_ID; AND ID=:ID;";
     public static final String UPDATE_BASIC_APPINFO_WITH_ROLE_CLAIM = "UPDATE SP_APP SET ROLE_CLAIM=? WHERE TENANT_ID" +
             "= ? AND ID = ?";

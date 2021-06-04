@@ -100,9 +100,8 @@ public class ApplicationManagementAdminService extends AbstractAdmin {
 
         try {
             applicationMgtService = ApplicationManagementService.getInstance();
-            return applicationMgtService.createApplicationWithTemplate(serviceProvider, getTenantDomain(),
-                    getUsername(),
-                    templateName);
+            return applicationMgtService.createApplication(serviceProvider, getTenantDomain(),
+                    getUserId(), templateName);
         } catch (IdentityApplicationManagementException ex) {
             String message = "Error while creating application: " + serviceProvider.getApplicationName() + " for " +
                     "tenant: " + getTenantDomain();
@@ -146,10 +145,10 @@ public class ApplicationManagementAdminService extends AbstractAdmin {
         try {
             applicationMgtService = ApplicationManagementService.getInstance();
             ApplicationBasicInfo[] applicationBasicInfos =
-                    applicationMgtService.getAllApplicationBasicInfo(getTenantDomain(), getUsername());
+                    applicationMgtService.getAllApplicationBasicInfo(getTenantDomain(), getUserId());
             List<ApplicationBasicInfo> appInfo = getAuthorizedApplicationBasicInfo(applicationBasicInfos,
                     getUsername());
-            return appInfo.toArray(new ApplicationBasicInfo[appInfo.size()]);
+            return appInfo.toArray(new ApplicationBasicInfo[0]);
         } catch (IdentityApplicationManagementException ex) {
             String message = "Error while retrieving all application basic info for tenant: " + getTenantDomain();
             throw handleException(message, ex);

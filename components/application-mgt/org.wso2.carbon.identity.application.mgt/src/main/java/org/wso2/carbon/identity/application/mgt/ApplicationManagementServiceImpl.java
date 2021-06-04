@@ -81,7 +81,6 @@ import org.wso2.carbon.user.api.UserRealm;
 import org.wso2.carbon.user.api.UserStoreException;
 import org.wso2.carbon.user.core.UserCoreConstants;
 import org.wso2.carbon.user.core.common.AbstractUserStoreManager;
-import org.wso2.carbon.user.core.util.UserCoreUtil;
 import org.wso2.carbon.utils.multitenancy.MultitenantUtils;
 import org.xml.sax.InputSource;
 import org.xml.sax.SAXException;
@@ -132,8 +131,8 @@ import static org.wso2.carbon.identity.application.mgt.ApplicationConstants.APPL
 import static org.wso2.carbon.identity.application.mgt.ApplicationConstants.SYSTEM_APPLICATIONS_CONFIG_ELEMENT;
 import static org.wso2.carbon.identity.application.mgt.ApplicationMgtUtil.endTenantFlow;
 import static org.wso2.carbon.identity.application.mgt.ApplicationMgtUtil.isRegexValidated;
-import static org.wso2.carbon.identity.application.mgt.ApplicationMgtUtil.startTenantFlow;
 import static org.wso2.carbon.identity.core.util.IdentityUtil.isValidPEMCertificate;
+import static org.wso2.carbon.user.core.constants.UserCoreErrorConstants.ErrorMessages.ERROR_CODE_ROLE_ALREADY_EXISTS;
 
 /**
  * Application management service implementation.
@@ -143,7 +142,7 @@ public class ApplicationManagementServiceImpl extends ApplicationManagementServi
     private static final Log log = LogFactory.getLog(ApplicationManagementServiceImpl.class);
     private static final Log diagnosticLog = LogFactory.getLog("diagnostics");
     private static volatile ApplicationManagementServiceImpl appMgtService;
-    private ApplicationValidatorManager applicationValidatorManager = new ApplicationValidatorManager();
+    private final ApplicationValidatorManager applicationValidatorManager = new ApplicationValidatorManager();
 
     /**
      * Private constructor which will not allow to create objects of this class from outside
@@ -181,10 +180,19 @@ public class ApplicationManagementServiceImpl extends ApplicationManagementServi
                                                          String username, String templateName)
             throws IdentityApplicationManagementException {
 
+        //TODO resolve user id
+        return createApplication(serviceProvider, tenantDomain, username, null);
+    }
+
+    public ServiceProvider createApplication(ServiceProvider serviceProvider, String tenantDomain,
+                                                               String userId, String templateName)
+            throws IdentityApplicationManagementException {
+
         // Call pre listeners.
         Collection<ApplicationMgtListener> listeners = getApplicationMgtListeners();
         for (ApplicationMgtListener listener : listeners) {
-            if (listener.isEnable() && !listener.doPreCreateApplication(serviceProvider, tenantDomain, username)) {
+            if (listener.isEnable() && !listener.doPreCreateApplicationWithUserId(serviceProvider, tenantDomain,
+                    userId)) {
                 diagnosticLog.error("Pre create application operation of listener: "
                         + getName(listener) + " failed for application: " + serviceProvider.getApplicationName() +
                         " of tenantDomain: " + tenantDomain);
@@ -194,11 +202,11 @@ public class ApplicationManagementServiceImpl extends ApplicationManagementServi
             }
         }
 
-        doPreAddApplicationChecks(serviceProvider, tenantDomain, username);
+        doPreAddApplicationChecks(serviceProvider, tenantDomain, userId);
         ApplicationDAO appDAO = ApplicationMgtSystemConfig.getInstance().getApplicationDAO();
-        serviceProvider.setOwner(getUser(tenantDomain, username));
+        serviceProvider.setOwner(getUser(tenantDomain, userId));
 
-        int appId = doAddApplication(serviceProvider, tenantDomain, username, appDAO::createApplication);
+        int appId = doAddApplication(serviceProvider, tenantDomain, userId, appDAO::createApplication);
         serviceProvider.setApplicationID(appId);
         setDisplayNamesOfLocalAuthenticators(serviceProvider, tenantDomain);
         SpTemplate spTemplate = this.getApplicationTemplate(templateName, tenantDomain);
@@ -208,7 +216,8 @@ public class ApplicationManagementServiceImpl extends ApplicationManagementServi
         }
 
         for (ApplicationMgtListener listener : listeners) {
-            if (listener.isEnable() && !listener.doPostCreateApplication(serviceProvider, tenantDomain, username)) {
+            if (listener.isEnable() && !listener.doPostCreateApplicationWithUserId(serviceProvider, tenantDomain,
+                    userId)) {
                 log.error("Post create application operation of listener:" + getName(listener) + " failed for " +
                         "application: " + serviceProvider.getApplicationName() + " of tenantDomain: " + tenantDomain);
                 diagnosticLog.error("Post create application operation of listener:" + getName(listener) +
@@ -1879,7 +1888,7 @@ public class ApplicationManagementServiceImpl extends ApplicationManagementServi
     }
 
     private void doPreAddApplicationChecks(ServiceProvider serviceProvider, String tenantDomain,
-                                           String username) throws IdentityApplicationManagementException {
+                                           String userId) throws IdentityApplicationManagementException {
 
         String appName = serviceProvider.getApplicationName();
         if (StringUtils.isBlank(appName)) {
@@ -1904,23 +1913,24 @@ public class ApplicationManagementServiceImpl extends ApplicationManagementServi
             throw buildClientException(INVALID_REQUEST, message);
         }
 
-        validateApplicationConfigurations(serviceProvider, tenantDomain, username);
+        validateApplicationConfigurations(serviceProvider, tenantDomain, userId);
     }
 
-    private <T> T doAddApplication(ServiceProvider serviceProvider, String tenantDomain, String username,
+    private <T> T doAddApplication(ServiceProvider serviceProvider, String tenantDomain, String userId,
                                    ApplicationPersistFunction<ServiceProvider, T> applicationPersistFunction)
             throws IdentityApplicationManagementException {
 
         try {
-            startTenantFlow(tenantDomain, username);
+            startTenantFlow(tenantDomain, userId);
 
             String applicationName = serviceProvider.getApplicationName();
             // First we need to create a role with the application name. Only the users in this role will be able to
             // edit/update the application.
-            ApplicationMgtUtil.createAppRole(applicationName, username);
+            createAppRole(applicationName, userId);
             try {
                 PermissionsAndRoleConfig permissionAndRoleConfig = serviceProvider.getPermissionAndRoleConfig();
-                ApplicationMgtUtil.storePermissions(applicationName, username, permissionAndRoleConfig);
+                //TODO check the usage
+                ApplicationMgtUtil.storePermissions(applicationName, userId, permissionAndRoleConfig);
             } catch (IdentityApplicationManagementException ex) {
                 if (log.isDebugEnabled()) {
                     log.debug("Creating application: " + applicationName + " in tenantDomain: " + tenantDomain +
@@ -2082,14 +2092,13 @@ public class ApplicationManagementServiceImpl extends ApplicationManagementServi
      * Create user object from user name and tenantDomain.
      *
      * @param tenantDomain tenantDomain
-     * @param username     username
+     * @param userid     user id
      * @return User
      */
-    private User getUser(String tenantDomain, String username) {
+    private User getUser(String tenantDomain, String userid) {
 
         User user = new User();
-        user.setUserName(UserCoreUtil.removeDomainFromName(username));
-        user.setUserStoreDomain(UserCoreUtil.extractDomainFromName(username));
+        user.setUserId(userid);
         user.setTenantDomain(tenantDomain);
         return user;
     }
@@ -2406,10 +2415,10 @@ public class ApplicationManagementServiceImpl extends ApplicationManagementServi
 
     private void validateApplicationConfigurations(ServiceProvider application,
                                                    String tenantDomain,
-                                                   String username) throws IdentityApplicationManagementException {
+                                                   String userId) throws IdentityApplicationManagementException {
 
         try {
-            applicationValidatorManager.validateSPConfigurations(application, tenantDomain, username);
+            applicationValidatorManager.validateSPConfigurations(application, tenantDomain, userId);
         } catch (IdentityApplicationManagementValidationException e) {
             String message = "Invalid application configuration for application: '" +
                     application.getApplicationName() + "' of tenantDomain: " + tenantDomain + ".";
@@ -2638,6 +2647,125 @@ public class ApplicationManagementServiceImpl extends ApplicationManagementServi
             localClaimsArray.add(localClaim.getClaimURI());
         }
         return localClaimsArray;
+    }
+
+    private void startTenantFlow(String tenantDomain, String userid)
+            throws IdentityApplicationManagementException {
+
+        startTenantFlow(tenantDomain);
+        PrivilegedCarbonContext.getThreadLocalCarbonContext().setUserId(userid);
+    }
+
+    private void startTenantFlow(String tenantDomain) throws IdentityApplicationManagementException {
+
+        int tenantId;
+        try {
+            tenantId = ApplicationManagementServiceComponentHolder.getInstance().getRealmService()
+                    .getTenantManager().getTenantId(tenantDomain);
+        } catch (UserStoreException e) {
+            throw new IdentityApplicationManagementException("Error when setting tenant domain. ", e);
+        }
+        PrivilegedCarbonContext.startTenantFlow();
+        PrivilegedCarbonContext.getThreadLocalCarbonContext().setTenantDomain(tenantDomain);
+        PrivilegedCarbonContext.getThreadLocalCarbonContext().setTenantId(tenantId);
+    }
+
+    /**
+     * Create a role for the application and assign the user to that role.
+     *
+     * @param applicationName
+     * @throws IdentityApplicationManagementException
+     */
+    private void createAppRole(String applicationName, String userid)
+            throws IdentityApplicationManagementException {
+
+        boolean validateRoles = ApplicationMgtUtil.validateRoles();
+        if (!validateRoles) {
+            if (log.isDebugEnabled()) {
+                log.debug("Validating user with application roles is disabled. Therefore, the application " +
+                        "role will not be created for application: " + applicationName);
+            }
+            return;
+        }
+        String roleName = getAppRoleName(applicationName);
+        String[] userIds = {userid};
+        AbstractUserStoreManager userStoreManager = null;
+        try {
+            userStoreManager = (AbstractUserStoreManager) CarbonContext.getThreadLocalCarbonContext().getUserRealm()
+                    .getUserStoreManager();
+            // create a role for the application and assign the user to that role.
+            if (log.isDebugEnabled()) {
+                log.debug("Creating application role : " + roleName + " and assign the user : "
+                        + Arrays.toString(userIds) + " to that role");
+            }
+            userStoreManager.addRoleWithID(roleName, userIds, null, false);
+        } catch (UserStoreException e) {
+            assignRoleToUser(userid, roleName, userStoreManager, e);
+        }
+    }
+
+    /**
+     * If the Application/<sp-name> role addition has failed giving role already exists issue, then
+     * assign the role to user.
+     *
+     * @param userId           User id
+     * @param roleName         Role name
+     * @param userStoreManager User store manager
+     * @param e                User store exception threw.
+     * @throws IdentityApplicationManagementException
+     */
+    private void assignRoleToUser(String userId, String roleName, AbstractUserStoreManager userStoreManager,
+                                         UserStoreException e) throws IdentityApplicationManagementException {
+
+        String errorMsgString = String.format(ERROR_CODE_ROLE_ALREADY_EXISTS.getMessage(), roleName);
+        String errMsg = e.getMessage();
+        if (errMsg != null && (errMsg.contains(ERROR_CODE_ROLE_ALREADY_EXISTS.getCode()) ||
+                errorMsgString.contains(errMsg))) {
+            String[] newRoles = {roleName};
+            if (log.isDebugEnabled()) {
+                log.debug("Application role is already created. Skip creating: " + roleName + " and assigning" +
+                        " the user: " + userId);
+            }
+            try {
+                userStoreManager.updateRoleListOfUserWithID(userId, null, newRoles);
+            } catch (UserStoreException e1) {
+                String msg = "Error while updating application role: " + roleName + " with user " + userId;
+
+                // If concurrent requests were made, the role could already be assigned to the user. When that
+                // validation is done upon a user store exception(rather than checking it prior updating the role
+                // list of the user), even the extreme case where the concurrent request assigns the role just before
+                // db query is executed, is handled.
+                try {
+                    if (isRoleAlreadyApplied(userId, roleName, userStoreManager)) {
+                        if (log.isDebugEnabled()) {
+                            log.debug("The role: " + roleName + ", is already assigned to the user: " + userId
+                                    + ". Skip assigning");
+                        }
+                        return;
+                    }
+                } catch (UserStoreException ex) {
+                    msg = "Error while getting existing application roles of the user " + userId;
+                    throw new IdentityApplicationManagementException(msg, ex);
+                }
+
+                // Throw the error, unless the error caused from role being already assigned.
+                throw new IdentityApplicationManagementException(msg, e1);
+            }
+        } else {
+            throw new IdentityApplicationManagementException("Error while creating application role: " + roleName +
+                    " with user " + userId, e);
+        }
+    }
+
+    private boolean isRoleAlreadyApplied(String userId, String roleName, AbstractUserStoreManager userStoreManager)
+            throws UserStoreException {
+
+        boolean isRoleAlreadyApplied = false;
+        List<String> roleListOfUser = userStoreManager.getRoleListOfUserWithID(userId);
+        if (roleListOfUser != null) {
+            isRoleAlreadyApplied = roleListOfUser.contains(roleName);
+        }
+        return isRoleAlreadyApplied;
     }
 }
 
