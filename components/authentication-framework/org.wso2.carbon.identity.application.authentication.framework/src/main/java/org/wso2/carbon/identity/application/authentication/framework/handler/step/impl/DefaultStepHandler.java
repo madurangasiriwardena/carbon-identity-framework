@@ -675,6 +675,9 @@ public class DefaultStepHandler implements StepHandler {
                             if (log.isDebugEnabled()) {
                                 log.debug(msg, e);
                             }
+                            // Since the persistence failed with duplicate user, let's try to get the user id again.
+                            userId = UserSessionStore.getInstance()
+                                    .getFederatedUserId(authenticatedSubjectIdentifier, tenantId, idpId);
                         }
                         context.getSubject().setUserId(userId);
                     } catch (UserSessionException e) {
