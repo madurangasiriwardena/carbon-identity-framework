@@ -43,6 +43,8 @@ public class PostAuthenticatedSubjectIdentifierHandler extends AbstractPostAuthn
 
     private static final Log log = LogFactory.getLog(PostAuthenticatedSubjectIdentifierHandler.class);
     private static PostAuthenticatedSubjectIdentifierHandler instance = new PostAuthenticatedSubjectIdentifierHandler();
+    
+    private String randomVariable = "1";
 
     /**
      * To avoid creation of multiple instances of this handler.
