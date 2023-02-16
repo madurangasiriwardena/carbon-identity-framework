@@ -47,7 +47,9 @@ public abstract class ApplicationManagementService implements ApplicationPaginat
      * @return ApplicationManagementService instance
      */
     public static ApplicationManagementService getInstance() {
-        return ApplicationManagementServiceImpl.getInstance();
+        // TODO This is wrong. We need to get the instance from the OSGi service.
+        return DPApplicationManagementServiceImpl.getInstance();
+//        return ApplicationManagementServiceImpl.getInstance();
     }
 
     /**

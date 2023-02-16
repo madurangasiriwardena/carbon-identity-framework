@@ -40,8 +40,8 @@ import org.wso2.carbon.identity.application.common.model.ServiceProvider;
 import org.wso2.carbon.identity.application.mgt.AbstractInboundAuthenticatorConfig;
 import org.wso2.carbon.identity.application.mgt.ApplicationConstants;
 import org.wso2.carbon.identity.application.mgt.ApplicationManagementService;
-import org.wso2.carbon.identity.application.mgt.ApplicationManagementServiceImpl;
 import org.wso2.carbon.identity.application.mgt.ApplicationMgtSystemConfig;
+import org.wso2.carbon.identity.application.mgt.DPApplicationManagementServiceImpl;
 import org.wso2.carbon.identity.application.mgt.DiscoverableApplicationManager;
 import org.wso2.carbon.identity.application.mgt.defaultsequence.DefaultAuthSeqMgtService;
 import org.wso2.carbon.identity.application.mgt.defaultsequence.DefaultAuthSeqMgtServiceImpl;
@@ -104,8 +104,10 @@ public class ApplicationManagementServiceComponent {
 
             bundleContext = context.getBundleContext();
             // Registering Application management service as a OSGIService
+//            bundleContext.registerService(ApplicationManagementService.class.getName(),
+//                    ApplicationManagementServiceImpl.getInstance(), null);
             bundleContext.registerService(ApplicationManagementService.class.getName(),
-                    ApplicationManagementServiceImpl.getInstance(), null);
+                    DPApplicationManagementServiceImpl.getInstance(), null);
             bundleContext.registerService(IdentityProviderMgtListener.class.getName(),
                     new ApplicationIdentityProviderMgtListener(), null);
             ApplicationMgtSystemConfig.getInstance();
