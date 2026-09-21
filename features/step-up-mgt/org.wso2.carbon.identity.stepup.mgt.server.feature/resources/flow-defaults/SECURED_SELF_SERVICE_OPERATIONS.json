@@ -38,7 +38,7 @@
                 "type": "INPUT",
                 "variant": "OTP",
                 "config": {
-                  "name": "OTPCode",
+                  "name": "otp",
                   "type": "text",
                   "label": "Verification code",
                   "required": true,
