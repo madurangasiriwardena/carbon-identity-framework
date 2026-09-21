@@ -1,6 +1,72 @@
 {
   "steps": [
     {
+      "id": "seed_step",
+      "type": "VIEW",
+      "data": {
+        "components": [
+          {
+            "id": "seed_form",
+            "category": "BLOCK",
+            "type": "FORM",
+            "components": [
+              {
+                "id": "seed_heading",
+                "category": "DISPLAY",
+                "type": "TYPOGRAPHY",
+                "variant": "H5",
+                "config": {
+                  "text": "Development seed (unverified)"
+                }
+              },
+              {
+                "id": "seed_username",
+                "category": "FIELD",
+                "type": "INPUT",
+                "variant": "TEXT",
+                "config": {
+                  "name": "username",
+                  "type": "text",
+                  "label": "Username",
+                  "required": true,
+                  "placeholder": "Username of the account to update"
+                }
+              },
+              {
+                "id": "seed_attributes",
+                "category": "FIELD",
+                "type": "INPUT",
+                "variant": "TEXT",
+                "config": {
+                  "name": "operationAttributes",
+                  "type": "text",
+                  "label": "Attributes to update",
+                  "required": false,
+                  "placeholder": "http://wso2.org/claims/emailaddress"
+                }
+              },
+              {
+                "id": "seed_submit",
+                "category": "BUTTON",
+                "type": "BUTTON",
+                "variant": "PRIMARY",
+                "action": {
+                  "type": "EXECUTOR",
+                  "executor": {
+                    "name": "UnverifiedInputSeedExecutor"
+                  },
+                  "nextId": "step_up_decision"
+                },
+                "config": {
+                  "text": "Seed and continue"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
       "id": "step_up_decision",
       "type": "EXECUTION",
       "data": {
