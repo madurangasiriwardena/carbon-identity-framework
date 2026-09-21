@@ -75,6 +75,8 @@ public class FlowMgtConfigUtilsTest {
     private static final String FLOW_TYPE_REGISTRATION = "REGISTRATION";
     private static final String FLOW_TYPE_PASSWORD_RECOVERY = "PASSWORD_RECOVERY";
     private static final String FLOW_TYPE_INVITED_USER_REGISTRATION = "INVITED_USER_REGISTRATION";
+    private static final String FLOW_TYPE_SECURED_SELF_SERVICE_OPERATIONS =
+            "SECURED_SELF_SERVICE_OPERATIONS";
 
     @BeforeMethod
     public void setUp() {
@@ -237,7 +239,7 @@ public class FlowMgtConfigUtilsTest {
         List<FlowConfigDTO> result = FlowMgtConfigUtils.getFlowConfigs(TENANT_DOMAIN);
 
         Assert.assertNotNull(result);
-        Assert.assertEquals(result.size(), 3);
+        Assert.assertEquals(result.size(), Constants.FlowTypes.values().length);
 
         List<String> flowTypes = Arrays.asList("REGISTRATION", "PASSWORD_RECOVERY", "INVITED_USER_REGISTRATION");
         for (String flowType : flowTypes) {
@@ -253,7 +255,7 @@ public class FlowMgtConfigUtilsTest {
         List<FlowConfigDTO> result = FlowMgtConfigUtils.getFlowConfigs(TENANT_DOMAIN);
 
         Assert.assertNotNull(result);
-        Assert.assertEquals(result.size(), 3);
+        Assert.assertEquals(result.size(), Constants.FlowTypes.values().length);
         for (FlowConfigDTO config : result) {
 
             Assert.assertFalse(config.getIsEnabled());
@@ -272,6 +274,12 @@ public class FlowMgtConfigUtilsTest {
                 case FLOW_TYPE_INVITED_USER_REGISTRATION:
                     Assert.assertFalse(Boolean.parseBoolean(config.getFlowCompletionConfig(
                             Constants.FlowCompletionConfig.IS_FLOW_COMPLETION_NOTIFICATION_ENABLED)));
+                    break;
+                case FLOW_TYPE_SECURED_SELF_SERVICE_OPERATIONS:
+                    // This flow supports no completion configuration at all. It restores a subject from prior
+                    // evidence rather than authenticating one, so it must never auto login.
+                    Assert.assertFalse(Boolean.parseBoolean(config.getFlowCompletionConfig(
+                            Constants.FlowCompletionConfig.IS_AUTO_LOGIN_ENABLED)));
                     break;
                 default:
                     Assert.fail("Unexpected flow type: " + config.getFlowType());
@@ -289,7 +297,7 @@ public class FlowMgtConfigUtilsTest {
         List<FlowConfigDTO> result = FlowMgtConfigUtils.getFlowConfigs(TENANT_DOMAIN);
 
         Assert.assertNotNull(result);
-        Assert.assertEquals(result.size(), 3);
+        Assert.assertEquals(result.size(), Constants.FlowTypes.values().length);
     }
 
     @Test
@@ -302,7 +310,7 @@ public class FlowMgtConfigUtilsTest {
         List<FlowConfigDTO> result = FlowMgtConfigUtils.getFlowConfigs(TENANT_DOMAIN);
 
         Assert.assertNotNull(result);
-        Assert.assertEquals(result.size(), 3);
+        Assert.assertEquals(result.size(), Constants.FlowTypes.values().length);
         for (FlowConfigDTO config : result) {
             Assert.assertFalse(config.getIsEnabled());
             Assert.assertFalse(Boolean.parseBoolean(config.getFlowCompletionConfig(
@@ -320,6 +328,12 @@ public class FlowMgtConfigUtilsTest {
                 case FLOW_TYPE_INVITED_USER_REGISTRATION:
                     Assert.assertFalse(Boolean.parseBoolean(config.getFlowCompletionConfig(
                             Constants.FlowCompletionConfig.IS_FLOW_COMPLETION_NOTIFICATION_ENABLED)));
+                    break;
+                case FLOW_TYPE_SECURED_SELF_SERVICE_OPERATIONS:
+                    // This flow supports no completion configuration at all. It restores a subject from prior
+                    // evidence rather than authenticating one, so it must never auto login.
+                    Assert.assertFalse(Boolean.parseBoolean(config.getFlowCompletionConfig(
+                            Constants.FlowCompletionConfig.IS_AUTO_LOGIN_ENABLED)));
                     break;
                 default:
                     Assert.fail("Unexpected flow type: " + config.getFlowType());
@@ -478,7 +492,7 @@ public class FlowMgtConfigUtilsTest {
         List<FlowConfigDTO> result = FlowMgtConfigUtils.getFlowConfigs(TENANT_DOMAIN);
 
         Assert.assertNotNull(result);
-        Assert.assertEquals(result.size(), 3);
+        Assert.assertEquals(result.size(), Constants.FlowTypes.values().length);
         for (FlowConfigDTO config : result) {
             Assert.assertFalse(config.getIsEnabled());
             Assert.assertFalse(Boolean.parseBoolean(config.getFlowCompletionConfig(
@@ -501,7 +515,7 @@ public class FlowMgtConfigUtilsTest {
         List<FlowConfigDTO> result = FlowMgtConfigUtils.getFlowConfigs(TENANT_DOMAIN);
 
         Assert.assertNotNull(result);
-        Assert.assertEquals(result.size(), 3);
+        Assert.assertEquals(result.size(), Constants.FlowTypes.values().length);
 
         long registrationCount = result.stream()
                 .filter(config -> "REGISTRATION".equals(config.getFlowType()))

@@ -1,0 +1,153 @@
+{
+  "steps": [
+    {
+      "id": "step_up_decision",
+      "type": "EXECUTION",
+      "data": {
+        "action": {
+          "type": "EXECUTOR",
+          "executor": {
+            "name": "StepUpDecisionExecutor"
+          },
+          "nextId": "step_up_prompt"
+        }
+      }
+    },
+    {
+      "id": "step_up_prompt",
+      "type": "VIEW",
+      "data": {
+        "components": [
+          {
+            "id": "step_up_form",
+            "category": "BLOCK",
+            "type": "FORM",
+            "components": [
+              {
+                "id": "step_up_heading",
+                "category": "DISPLAY",
+                "type": "TYPOGRAPHY",
+                "variant": "H5",
+                "config": {
+                  "text": "Confirm it is you"
+                }
+              },
+              {
+                "id": "step_up_otp",
+                "category": "FIELD",
+                "type": "INPUT",
+                "variant": "OTP",
+                "config": {
+                  "name": "OTPcode",
+                  "type": "text",
+                  "label": "Verification code",
+                  "required": true,
+                  "placeholder": "Enter the code we sent you"
+                }
+              },
+              {
+                "id": "step_up_submit",
+                "category": "BUTTON",
+                "type": "BUTTON",
+                "variant": "PRIMARY",
+                "action": {
+                  "type": "EXECUTOR",
+                  "executor": {
+                    "name": "EmailOTPExecutor"
+                  },
+                  "nextId": "attribute_collection"
+                },
+                "config": {
+                  "text": "Continue"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "attribute_collection",
+      "type": "VIEW",
+      "data": {
+        "components": [
+          {
+            "id": "attribute_form",
+            "category": "BLOCK",
+            "type": "FORM",
+            "components": [
+              {
+                "id": "attribute_heading",
+                "category": "DISPLAY",
+                "type": "TYPOGRAPHY",
+                "variant": "H5",
+                "config": {
+                  "text": "Update your email address"
+                }
+              },
+              {
+                "id": "attribute_email",
+                "category": "FIELD",
+                "type": "INPUT",
+                "variant": "TEXT",
+                "config": {
+                  "name": "http://wso2.org/claims/emailaddress",
+                  "type": "text",
+                  "label": "New email address",
+                  "required": true,
+                  "placeholder": "Enter the new email address"
+                }
+              },
+              {
+                "id": "attribute_submit",
+                "category": "BUTTON",
+                "type": "BUTTON",
+                "variant": "PRIMARY",
+                "action": {
+                  "type": "EXECUTOR",
+                  "executor": {
+                    "name": "SecuredOperationExecutor"
+                  },
+                  "nextId": "operation_completion"
+                },
+                "config": {
+                  "text": "Save"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "operation_completion",
+      "type": "EXECUTION",
+      "data": {
+        "action": {
+          "type": "EXECUTOR",
+          "executor": {
+            "name": "SecuredOperationCompletionExecutor"
+          },
+          "nextId": "END"
+        }
+      }
+    },
+    {
+      "id": "END",
+      "type": "END",
+      "data": {
+        "components": [
+          {
+            "id": "completion_heading",
+            "category": "DISPLAY",
+            "type": "TYPOGRAPHY",
+            "variant": "H5",
+            "config": {
+              "text": "Your details have been updated"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

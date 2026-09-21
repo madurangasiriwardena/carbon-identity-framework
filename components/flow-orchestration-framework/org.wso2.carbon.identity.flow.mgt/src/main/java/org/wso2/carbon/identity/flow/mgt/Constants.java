@@ -152,7 +152,14 @@ public class Constants {
                 FlowCompletionConfig.IS_FLOW_COMPLETION_NOTIFICATION_ENABLED),
         INVITED_USER_REGISTRATION("INVITED_USER_REGISTRATION", "defaultEnableInvitedUserRegistration",
                 FlowCompletionConfig.IS_AUTO_LOGIN_ENABLED,
-                FlowCompletionConfig.IS_FLOW_COMPLETION_NOTIFICATION_ENABLED);
+                FlowCompletionConfig.IS_FLOW_COMPLETION_NOTIFICATION_ENABLED),
+        /*
+        Updates a protected attribute of an already known user after an additional authentication factor has been
+        performed. The subject is restored from prior evidence rather than authenticated from scratch, so this flow
+        supports no completion configuration: it must never auto login, and it leaves no session behind.
+         */
+        SECURED_SELF_SERVICE_OPERATIONS("SECURED_SELF_SERVICE_OPERATIONS",
+                "defaultEnableSecuredSelfServiceOperations");
 
         private final String type;
         private final String defaultEnablementCompatibilityKey;
