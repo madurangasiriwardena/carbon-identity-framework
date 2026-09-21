@@ -93,13 +93,18 @@ public class SecuredOperationExecutor implements Executor {
 
         Map<String, String> updates = collectSeededAttributeValues(context);
         if (updates.isEmpty()) {
-            // The user has reached the operation step without supplying a value. Ask rather than fail.
-            // This is also what a flow whose form collects a different attribute from the one it was seeded for
-            // looks like, so both are named here rather than leaving the step to repeat silently.
+            /*
+             Reached on the way to the collection page, before the user has entered anything: returning
+             USER_INPUT_REQUIRED here is what causes that page to be shown. It is also what a flow whose form
+             collects a different attribute from the one it was seeded for looks like, so both lists are named to
+             tell the two apart. Claims updated by an earlier step, such as an OTP marking an address verified,
+             appear here too without being anything this operation may write.
+             */
             if (LOG.isDebugEnabled()) {
-                LOG.debug("Nothing to apply for flow " + context.getContextIdentifier() + ". Seeded attributes: "
+                LOG.debug("No seeded attribute supplied yet for flow " + context.getContextIdentifier()
+                        + ", asking for input. Seeded attributes: "
                         + StepUpFlowContextUtils.joinValues(seededAttributes(context)) + ". Claims updated in this "
-                        + "flow: " + (context.getFlowUser() == null ? ""
+                        + "flow so far: " + (context.getFlowUser() == null ? ""
                         : StepUpFlowContextUtils.joinValues(context.getFlowUser().getUpdatedClaimUris())));
             }
             return userInputRequiredResponse(context);
