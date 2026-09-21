@@ -98,9 +98,9 @@ public class SecuredOperationExecutor implements Executor {
             // looks like, so both are named here rather than leaving the step to repeat silently.
             if (LOG.isDebugEnabled()) {
                 LOG.debug("Nothing to apply for flow " + context.getContextIdentifier() + ". Seeded attributes: "
-                        + StepUpFlowContextUtils.joinValues(seededAttributes(context)) + ". Supplied inputs: "
-                        + (context.getUserInputData() == null ? ""
-                        : StepUpFlowContextUtils.joinValues(context.getUserInputData().keySet())));
+                        + StepUpFlowContextUtils.joinValues(seededAttributes(context)) + ". Claims updated in this "
+                        + "flow: " + (context.getFlowUser() == null ? ""
+                        : StepUpFlowContextUtils.joinValues(context.getFlowUser().getUpdatedClaimUris())));
             }
             return userInputRequiredResponse(context);
         }
@@ -135,19 +135,30 @@ public class SecuredOperationExecutor implements Executor {
     }
 
     /**
-     * Picks out the values supplied for the attributes this flow was seeded for, and nothing else.
+     * Picks out the values the user supplied for the attributes this flow was seeded for, and nothing else.
+     * <p>
+     * The values are read from the flow user rather than from the raw request inputs. The engine validates inputs
+     * before a node runs, and in doing so moves every claim URI keyed input onto the flow user and removes it from
+     * the input map, so by the time this executor runs the raw inputs no longer carry them.
+     * <p>
+     * Only claims the user actually changed in this flow are considered. Claims that were merely loaded onto the
+     * flow user, such as the address an OTP was sent to, are not updates and must not be written back.
      */
     private Map<String, String> collectSeededAttributeValues(FlowExecutionContext context) {
 
         Map<String, String> updates = new LinkedHashMap<>();
         Set<String> seededAttributes = seededAttributes(context);
-        if (seededAttributes.isEmpty() || context.getUserInputData() == null) {
+        if (seededAttributes.isEmpty() || context.getFlowUser() == null) {
             return updates;
         }
+        Set<String> updatedClaimUris = context.getFlowUser().getUpdatedClaimUris();
         for (String attribute : seededAttributes) {
-            String value = context.getUserInputData().get(attribute);
-            if (StringUtils.isNotBlank(value)) {
-                updates.put(attribute, value);
+            if (!updatedClaimUris.contains(attribute)) {
+                continue;
+            }
+            Object value = context.getFlowUser().getClaim(attribute);
+            if (value != null && StringUtils.isNotBlank(value.toString())) {
+                updates.put(attribute, value.toString());
             }
         }
         return updates;

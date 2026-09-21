@@ -105,7 +105,7 @@ public class SecuredOperationExecutorTest {
             + "evaluated must not read the same as evaluated and satisfied.")
     public void testUnevaluatedDecisionIsRefused() throws Exception {
 
-        context.getUserInputData().put(EMAIL_CLAIM, "new@example.com");
+        context.getFlowUser().addUpdatedClaim(EMAIL_CLAIM, "new@example.com");
 
         ExecutorResponse response = executor.execute(context);
 
@@ -120,7 +120,7 @@ public class SecuredOperationExecutorTest {
 
         context.setProperty(DECISION_EVALUATED, Boolean.TRUE);
         context.setProperty(OUTSTANDING_FACTORS, EMAIL_OTP);
-        context.getUserInputData().put(EMAIL_CLAIM, "new@example.com");
+        context.getFlowUser().addUpdatedClaim(EMAIL_CLAIM, "new@example.com");
 
         ExecutorResponse response = executor.execute(context);
 
@@ -133,7 +133,7 @@ public class SecuredOperationExecutorTest {
     public void testUpdateAppliedOnceFactorPerformed() throws Exception {
 
         givenFactorPerformedInFlow();
-        context.getUserInputData().put(EMAIL_CLAIM, "new@example.com");
+        context.getFlowUser().addUpdatedClaim(EMAIL_CLAIM, "new@example.com");
 
         ExecutorResponse response = executor.execute(context);
 
@@ -146,8 +146,8 @@ public class SecuredOperationExecutorTest {
     public void testUnseededAttributeIsNotApplied() throws Exception {
 
         givenFactorPerformedInFlow();
-        context.getUserInputData().put(EMAIL_CLAIM, "new@example.com");
-        context.getUserInputData().put(MOBILE_CLAIM, "+94770000000");
+        context.getFlowUser().addUpdatedClaim(EMAIL_CLAIM, "new@example.com");
+        context.getFlowUser().addUpdatedClaim(MOBILE_CLAIM, "+94770000000");
 
         executor.execute(context);
 
@@ -173,12 +173,26 @@ public class SecuredOperationExecutorTest {
 
         givenFactorPerformedInFlow();
         context.getFlowUser().setUserId(null);
-        context.getUserInputData().put(EMAIL_CLAIM, "new@example.com");
+        context.getFlowUser().addUpdatedClaim(EMAIL_CLAIM, "new@example.com");
 
         ExecutorResponse response = executor.execute(context);
 
         assertEquals(response.getResult(), STATUS_ERROR);
         assertEquals(response.getErrorCode(), "SSO-65105");
+        verify(userStoreManager, never()).setUserClaimValuesWithID(anyString(), any(), any());
+    }
+
+    @Test(description = "A claim that was merely loaded onto the flow, such as the address an OTP was sent to, is "
+            + "not an update and must not be written back.")
+    public void testClaimLoadedButNotUpdatedIsNotApplied() throws Exception {
+
+        givenFactorPerformedInFlow();
+        // Loaded, not updated: this is what seeding a flow with the user's current values looks like.
+        context.getFlowUser().addClaim(EMAIL_CLAIM, "existing@example.com");
+
+        ExecutorResponse response = executor.execute(context);
+
+        assertEquals(response.getResult(), STATUS_USER_INPUT_REQUIRED);
         verify(userStoreManager, never()).setUserClaimValuesWithID(anyString(), any(), any());
     }
 
