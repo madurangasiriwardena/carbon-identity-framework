@@ -16,20 +16,20 @@
                 "type": "TYPOGRAPHY",
                 "variant": "H5",
                 "config": {
-                  "text": "Development seed (unverified)"
+                  "text": "Development seed (access token)"
                 }
               },
               {
-                "id": "seed_username",
+                "id": "seed_access_token",
                 "category": "FIELD",
                 "type": "INPUT",
                 "variant": "TEXT",
                 "config": {
-                  "name": "username",
+                  "name": "accessToken",
                   "type": "text",
-                  "label": "Username",
+                  "label": "Access token",
                   "required": true,
-                  "placeholder": "Username of the account to update"
+                  "placeholder": "Paste a JWT access token issued to the application"
                 }
               },
               {
@@ -53,7 +53,7 @@
                 "action": {
                   "type": "EXECUTOR",
                   "executor": {
-                    "name": "UnverifiedInputSeedExecutor"
+                    "name": "AccessTokenSeedExecutor"
                   },
                   "nextId": "step_up_decision"
                 },

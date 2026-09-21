@@ -28,6 +28,7 @@ import org.osgi.service.component.annotations.Reference;
 import org.osgi.service.component.annotations.ReferenceCardinality;
 import org.osgi.service.component.annotations.ReferencePolicy;
 import org.wso2.carbon.identity.flow.execution.engine.graph.Executor;
+import org.wso2.carbon.identity.stepup.flow.testing.executor.AccessTokenSeedExecutor;
 import org.wso2.carbon.identity.stepup.flow.testing.executor.UnverifiedInputSeedExecutor;
 import org.wso2.carbon.user.core.service.RealmService;
 
@@ -49,6 +50,8 @@ public class StepUpFlowTestingServiceComponent {
     protected void activate(ComponentContext context) {
 
         try {
+            context.getBundleContext()
+                    .registerService(Executor.class.getName(), new AccessTokenSeedExecutor(), null);
             context.getBundleContext()
                     .registerService(Executor.class.getName(), new UnverifiedInputSeedExecutor(), null);
             LOG.warn("Step-up flow testing bundle activated. This bundle seeds flows from unverified input and "
