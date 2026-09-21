@@ -103,7 +103,7 @@
                 "id": "attribute_mobile",
                 "category": "FIELD",
                 "type": "INPUT",
-                "variant": "TELEPHONE",
+                "variant": "TEXT",
                 "configs": {
                   "type": "text",
                   "label": "New mobile number",
