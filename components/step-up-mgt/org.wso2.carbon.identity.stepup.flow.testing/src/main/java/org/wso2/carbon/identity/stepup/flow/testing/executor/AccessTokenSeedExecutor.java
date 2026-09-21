@@ -150,7 +150,7 @@ public class AccessTokenSeedExecutor implements Executor {
 
         Map<String, Object> properties = new HashMap<>();
         properties.put("stepUp.operationType", defaulted(inputs.get(INPUT_OPERATION_TYPE), "UPDATE_PROFILE"));
-        properties.put("stepUp.operationAttributes", defaulted(inputs.get(INPUT_OPERATION_ATTRIBUTES), EMAIL_CLAIM));
+        properties.put("stepUp.operationAttributes", defaulted(inputs.get(INPUT_OPERATION_ATTRIBUTES), MOBILE_CLAIM));
         properties.put("stepUp.validatedCallbackUrl",
                 defaulted(inputs.get(INPUT_CALLBACK_URL), "https://localhost:9443/myaccount"));
         carryPriorEvidence(claims, properties);

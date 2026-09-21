@@ -95,20 +95,20 @@
                 "type": "TYPOGRAPHY",
                 "variant": "H5",
                 "config": {
-                  "text": "Update your email address"
+                  "text": "Update your mobile number"
                 }
               },
               {
-                "id": "attribute_email",
+                "id": "attribute_mobile",
                 "category": "FIELD",
                 "type": "INPUT",
-                "variant": "TEXT",
+                "variant": "TELEPHONE",
                 "config": {
-                  "name": "http://wso2.org/claims/emailaddress",
+                  "name": "http://wso2.org/claims/mobile",
                   "type": "text",
-                  "label": "New email address",
+                  "label": "New mobile number",
                   "required": true,
-                  "placeholder": "Enter the new email address"
+                  "placeholder": "Enter the new mobile number"
                 }
               },
               {
