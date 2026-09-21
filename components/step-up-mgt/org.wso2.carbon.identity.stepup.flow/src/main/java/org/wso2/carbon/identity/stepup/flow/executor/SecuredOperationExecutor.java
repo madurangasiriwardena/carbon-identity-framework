@@ -94,6 +94,14 @@ public class SecuredOperationExecutor implements Executor {
         Map<String, String> updates = collectSeededAttributeValues(context);
         if (updates.isEmpty()) {
             // The user has reached the operation step without supplying a value. Ask rather than fail.
+            // This is also what a flow whose form collects a different attribute from the one it was seeded for
+            // looks like, so both are named here rather than leaving the step to repeat silently.
+            if (LOG.isDebugEnabled()) {
+                LOG.debug("Nothing to apply for flow " + context.getContextIdentifier() + ". Seeded attributes: "
+                        + StepUpFlowContextUtils.joinValues(seededAttributes(context)) + ". Supplied inputs: "
+                        + (context.getUserInputData() == null ? ""
+                        : StepUpFlowContextUtils.joinValues(context.getUserInputData().keySet())));
+            }
             return userInputRequiredResponse(context);
         }
 
