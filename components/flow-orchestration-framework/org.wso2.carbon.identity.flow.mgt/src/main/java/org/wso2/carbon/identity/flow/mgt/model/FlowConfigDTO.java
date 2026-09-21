@@ -100,11 +100,17 @@ public class FlowConfigDTO {
 
     /**
      * Add all flow completion configurations from a map.
+     * <p>
+     * A null map means the caller supplied no configurations, which leaves this configuration unchanged. Flow types
+     * that support no completion configuration at all reach this with nothing to add, and that is not an error.
      *
-     * @param configs Map of flow completion configurations.
+     * @param configs Map of flow completion configurations. May be null.
      */
     public void addAllFlowCompletionConfigs(Map<String, String> configs) {
 
+        if (configs == null) {
+            return;
+        }
         this.flowCompletionConfigs.putAll(configs);
     }
 
