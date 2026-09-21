@@ -2,68 +2,15 @@
   "steps": [
     {
       "id": "seed_step",
-      "type": "VIEW",
+      "type": "EXECUTION",
       "data": {
-        "components": [
-          {
-            "id": "seed_form",
-            "category": "BLOCK",
-            "type": "FORM",
-            "components": [
-              {
-                "id": "seed_heading",
-                "category": "DISPLAY",
-                "type": "TYPOGRAPHY",
-                "variant": "H5",
-                "config": {
-                  "text": "Development seed (access token)"
-                }
-              },
-              {
-                "id": "seed_access_token",
-                "category": "FIELD",
-                "type": "INPUT",
-                "variant": "TEXT",
-                "config": {
-                  "name": "accessToken",
-                  "type": "text",
-                  "label": "Access token",
-                  "required": true,
-                  "placeholder": "Paste a JWT access token issued to the application"
-                }
-              },
-              {
-                "id": "seed_attributes",
-                "category": "FIELD",
-                "type": "INPUT",
-                "variant": "TEXT",
-                "config": {
-                  "name": "operationAttributes",
-                  "type": "text",
-                  "label": "Attributes to update",
-                  "required": false,
-                  "placeholder": "http://wso2.org/claims/emailaddress"
-                }
-              },
-              {
-                "id": "seed_submit",
-                "category": "BUTTON",
-                "type": "BUTTON",
-                "variant": "PRIMARY",
-                "action": {
-                  "type": "EXECUTOR",
-                  "executor": {
-                    "name": "AccessTokenSeedExecutor"
-                  },
-                  "nextId": "step_up_decision"
-                },
-                "config": {
-                  "text": "Seed and continue"
-                }
-              }
-            ]
-          }
-        ]
+        "action": {
+          "type": "EXECUTOR",
+          "executor": {
+            "name": "AccessTokenSeedExecutor"
+          },
+          "nextId": "step_up_decision"
+        }
       }
     },
     {

@@ -78,6 +78,7 @@ public class AccessTokenSeedExecutor implements Executor {
     private static final String EXECUTOR_NAME = "AccessTokenSeedExecutor";
     private static final String ENABLED_PROPERTY = "StepUp.AllowUnverifiedSeed";
 
+    private static final String INPUT_LAUNCH_TOKEN = "launchToken";
     private static final String INPUT_ACCESS_TOKEN = "accessToken";
     private static final String INPUT_OPERATION_TYPE = "operationType";
     private static final String INPUT_OPERATION_ATTRIBUTES = "operationAttributes";
@@ -109,8 +110,13 @@ public class AccessTokenSeedExecutor implements Executor {
             return error("Token seeding is not enabled on this server.");
         }
 
+        // The token arrives with the request that opened the flow, the way a launch token does. A pasted value is
+        // still accepted so the flow can be driven by hand when there is no application to launch it.
         Map<String, String> inputs = context.getUserInputData();
-        String accessToken = inputs == null ? null : inputs.get(INPUT_ACCESS_TOKEN);
+        String accessToken = inputs == null ? null : inputs.get(INPUT_LAUNCH_TOKEN);
+        if (StringUtils.isBlank(accessToken) && inputs != null) {
+            accessToken = inputs.get(INPUT_ACCESS_TOKEN);
+        }
         if (StringUtils.isBlank(accessToken)) {
             ExecutorResponse response = new ExecutorResponse(STATUS_USER_INPUT_REQUIRED);
             response.setRequiredData(Collections.singletonList(INPUT_ACCESS_TOKEN));
@@ -303,8 +309,8 @@ public class AccessTokenSeedExecutor implements Executor {
     @Override
     public List<String> getInitiationData() {
 
-        return Arrays.asList(INPUT_ACCESS_TOKEN, INPUT_OPERATION_TYPE, INPUT_OPERATION_ATTRIBUTES,
-                INPUT_CALLBACK_URL);
+        return Arrays.asList(INPUT_LAUNCH_TOKEN, INPUT_ACCESS_TOKEN, INPUT_OPERATION_TYPE,
+                INPUT_OPERATION_ATTRIBUTES, INPUT_CALLBACK_URL);
     }
 
     @Override
