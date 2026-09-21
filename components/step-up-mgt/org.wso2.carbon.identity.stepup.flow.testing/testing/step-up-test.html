@@ -1,0 +1,329 @@
+<!--
+  ~ Copyright (c) 2026, WSO2 LLC. (http://www.wso2.com).
+  ~
+  ~ WSO2 LLC. licenses this file to you under the Apache License,
+  ~ Version 2.0 (the "License"); you may not use this file except
+  ~ in compliance with the License.
+  ~ You may obtain a copy of the License at
+  ~
+  ~ http://www.apache.org/licenses/LICENSE-2.0
+  ~
+  ~ Unless required by applicable law or agreed to in writing,
+  ~ software distributed under the License is distributed on an
+  ~ "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+  ~ KIND, either express or implied.  See the License for the
+  ~ specific language governing permissions and limitations
+  ~ under the License.
+  -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Secured self-service operations - flow driver</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #fff; --ink: #1b1f24; --muted: #5b6672;
+    --line: #dfe3e8; --accent: #ff7300; --ok: #1a7f37; --bad: #b42318; --code: #f2f4f7;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  header { background: var(--panel); border-bottom: 1px solid var(--line); padding: 14px 20px; }
+  header h1 { margin: 0; font-size: 16px; font-weight: 600; }
+  header p { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
+  main { display: grid; grid-template-columns: minmax(340px, 420px) 1fr; gap: 16px; padding: 16px; align-items: start; }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; }
+  section h2 { margin: 0 0 10px; font-size: 13px; text-transform: uppercase;
+                letter-spacing: .04em; color: var(--muted); font-weight: 600; }
+  label { display: block; margin: 10px 0 4px; font-size: 12px; color: var(--muted); }
+  input, textarea, select { width: 100%; padding: 7px 9px; border: 1px solid var(--line);
+                            border-radius: 5px; font: inherit; background: #fff; color: var(--ink); }
+  textarea { resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+  button { padding: 8px 14px; border: 0; border-radius: 5px; background: var(--accent); color: #fff;
+           font: inherit; font-weight: 600; cursor: pointer; }
+  button.secondary { background: #e7eaee; color: var(--ink); }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+  .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+  .pill.ok { background: #e6f4ea; color: var(--ok); }
+  .pill.bad { background: #fdeceb; color: var(--bad); }
+  .pill.idle { background: #eef1f4; color: var(--muted); }
+  .meta { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;
+          color: var(--muted); word-break: break-all; }
+  .entry { border: 1px solid var(--line); border-radius: 6px; margin-bottom: 10px; overflow: hidden; }
+  .entry > summary { cursor: pointer; padding: 8px 10px; background: var(--code); font-size: 12px;
+                     font-weight: 600; display: flex; gap: 8px; align-items: center; }
+  .entry pre { margin: 0; padding: 10px; background: #fff; overflow-x: auto;
+               font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+  .hint { color: var(--muted); font-size: 12px; margin: 8px 0 0; }
+  .field-label { font-weight: 600; color: var(--ink); }
+  .stepbox { border: 1px dashed var(--line); border-radius: 6px; padding: 12px; margin-top: 10px; }
+  .empty { color: var(--muted); font-style: italic; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Secured self-service operations &mdash; flow driver</h1>
+  <p>Drives <code>POST /api/server/v1/flow/execute</code> directly. Serve this page from the Identity Server so the
+     calls are same origin.</p>
+</header>
+
+<main>
+  <section>
+    <h2>Setup</h2>
+
+    <label for="baseUrl">Server base URL</label>
+    <input id="baseUrl" value="" placeholder="leave blank to use this origin">
+
+    <label for="user">Admin username</label>
+    <input id="user" value="admin">
+
+    <label for="pass">Admin password</label>
+    <input id="pass" type="password" value="admin">
+
+    <label for="appId">Application id (optional)</label>
+    <input id="appId" placeholder="resource id of the application">
+
+    <label for="token">Launch token (a JWT access token for now)</label>
+    <textarea id="token" rows="5" placeholder="eyJ4NXQi..."></textarea>
+
+    <label for="attrs">Attributes to update (optional)</label>
+    <input id="attrs" placeholder="http://wso2.org/claims/emailaddress">
+
+    <div class="row">
+      <button id="start">Start flow</button>
+      <button id="reset" class="secondary">Reset</button>
+    </div>
+
+    <p class="hint">The seed step is headless, so starting the flow should return the step-up prompt directly.</p>
+
+    <h2 style="margin-top:18px">Manual call</h2>
+    <p class="hint">For the refusal checks: send an action the flow has not reached yet, such as
+       <code>attribute_submit</code> straight after starting, and confirm it is refused.</p>
+    <label for="manualAction">actionId</label>
+    <input id="manualAction" placeholder="attribute_submit">
+    <label for="manualInputs">inputs (JSON)</label>
+    <textarea id="manualInputs" rows="3">{}</textarea>
+    <div class="row"><button id="manualSend" class="secondary">Send</button></div>
+  </section>
+
+  <section>
+    <h2>Current step</h2>
+    <div>
+      <span id="statusPill" class="pill idle">not started</span>
+      <span class="meta" id="flowMeta"></span>
+    </div>
+    <div id="step" class="stepbox"><span class="empty">Start the flow to begin.</span></div>
+
+    <h2 style="margin-top:20px">Exchange log</h2>
+    <div id="log"><span class="empty">Nothing sent yet.</span></div>
+  </section>
+</main>
+
+<script>
+(function () {
+  "use strict";
+
+  var flowId = null;
+  var FLOW_TYPE = "SECURED_SELF_SERVICE_OPERATIONS";
+
+  function $(id) { return document.getElementById(id); }
+
+  function endpoint() {
+    var base = $("baseUrl").value.trim().replace(/\/+$/, "");
+    return (base || "") + "/api/server/v1/flow/execute";
+  }
+
+  function authHeader() {
+    return "Basic " + btoa($("user").value + ":" + $("pass").value);
+  }
+
+  function setStatus(text, kind) {
+    var pill = $("statusPill");
+    pill.textContent = text;
+    pill.className = "pill " + (kind || "idle");
+  }
+
+  function logExchange(title, request, response, failed) {
+    var log = $("log");
+    if (log.firstElementChild === null || log.querySelector(".empty")) { log.innerHTML = ""; }
+    var entry = document.createElement("details");
+    entry.className = "entry";
+    entry.open = true;
+    var summary = document.createElement("summary");
+    summary.innerHTML = '<span class="pill ' + (failed ? "bad" : "ok") + '">' +
+                        (failed ? "failed" : "ok") + "</span>" + title;
+    var pre = document.createElement("pre");
+    pre.textContent = "request\n" + JSON.stringify(request, null, 2) +
+                      "\n\nresponse\n" + JSON.stringify(response, null, 2);
+    entry.appendChild(summary);
+    entry.appendChild(pre);
+    log.insertBefore(entry, log.firstChild);
+  }
+
+  function post(body, title) {
+    return fetch(endpoint(), {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": authHeader() },
+      body: JSON.stringify(body)
+    }).then(function (res) {
+      return res.json().catch(function () { return { note: "no JSON body", status: res.status }; })
+        .then(function (json) { return { ok: res.ok, status: res.status, json: json }; });
+    }).then(function (result) {
+      logExchange(title, body, result.json, !result.ok);
+      if (!result.ok) {
+        setStatus((result.json && result.json.code) || ("HTTP " + result.status), "bad");
+        renderRefusal(result.json);
+        return null;
+      }
+      handleStep(result.json);
+      return result.json;
+    }).catch(function (err) {
+      logExchange(title, body, { error: String(err) }, true);
+      setStatus("request failed", "bad");
+      return null;
+    });
+  }
+
+  function renderRefusal(json) {
+    var box = $("step");
+    box.innerHTML = "";
+    var h = document.createElement("div");
+    h.innerHTML = '<span class="field-label">Refused</span>';
+    var pre = document.createElement("pre");
+    pre.style.background = "var(--code)";
+    pre.style.padding = "10px";
+    pre.style.borderRadius = "6px";
+    pre.textContent = JSON.stringify(json, null, 2);
+    box.appendChild(h);
+    box.appendChild(pre);
+  }
+
+  function collectComponents(components, fields, buttons) {
+    (components || []).forEach(function (c) {
+      if (c.category === "FIELD") { fields.push(c); }
+      if (c.category === "BUTTON" && c.action) { buttons.push(c); }
+      if (c.components) { collectComponents(c.components, fields, buttons); }
+    });
+  }
+
+  function handleStep(step) {
+    if (step.flowId) { flowId = step.flowId; }
+    $("flowMeta").textContent = flowId ? ("flowId " + flowId) : "";
+
+    if (step.flowStatus === "COMPLETE") {
+      setStatus("complete", "ok");
+      var box = $("step");
+      box.innerHTML = '<div class="field-label">Flow complete</div>';
+      var url = step.data && step.data.redirectURL;
+      var p = document.createElement("p");
+      p.className = "hint";
+      p.textContent = url ? ("Redirect target: " + url) : "No redirect target returned.";
+      box.appendChild(p);
+      return;
+    }
+
+    setStatus(step.flowStatus || "incomplete", "idle");
+    renderStep(step);
+  }
+
+  function renderStep(step) {
+    var box = $("step");
+    box.innerHTML = "";
+
+    var fields = [], buttons = [];
+    collectComponents((step.data || {}).components, fields, buttons);
+
+    var required = (step.data || {}).requiredParams || [];
+    if (required.length) {
+      var r = document.createElement("p");
+      r.className = "hint";
+      r.textContent = "required: " + required.join(", ");
+      box.appendChild(r);
+    }
+
+    if (!fields.length && !buttons.length) {
+      box.innerHTML = '<span class="empty">This step rendered no components. See the log.</span>';
+      return;
+    }
+
+    var inputs = {};
+    fields.forEach(function (f) {
+      var name = (f.config && f.config.name) || f.id;
+      var label = document.createElement("label");
+      label.textContent = (f.config && f.config.label) || name;
+      label.setAttribute("for", "fld_" + f.id);
+      var input = document.createElement("input");
+      input.id = "fld_" + f.id;
+      input.placeholder = (f.config && f.config.placeholder) || "";
+      if (f.variant === "PASSWORD") { input.type = "password"; }
+      inputs[name] = input;
+      box.appendChild(label);
+      box.appendChild(input);
+    });
+
+    var row = document.createElement("div");
+    row.className = "row";
+    buttons.forEach(function (b) {
+      var btn = document.createElement("button");
+      btn.textContent = ((b.config && b.config.text) || "Submit") + "  →  " + b.id;
+      btn.onclick = function () {
+        var payload = {};
+        Object.keys(inputs).forEach(function (k) {
+          var v = inputs[k].value.trim();
+          if (v) { payload[k] = v; }
+        });
+        post({ flowId: flowId, actionId: b.id, inputs: payload }, "action " + b.id);
+      };
+      row.appendChild(btn);
+    });
+    box.appendChild(row);
+
+    var note = document.createElement("p");
+    note.className = "hint";
+    note.textContent = "The OTP step sends the code on the first submit with the field empty, and verifies it on " +
+                       "the second.";
+    box.appendChild(note);
+  }
+
+  $("start").onclick = function () {
+    flowId = null;
+    var body = { flowType: FLOW_TYPE, inputs: {} };
+    var appId = $("appId").value.trim();
+    if (appId) { body.applicationId = appId; }
+    var token = $("token").value.trim();
+    if (token) { body.inputs.launchToken = token; }
+    var attrs = $("attrs").value.trim();
+    if (attrs) { body.inputs.operationAttributes = attrs; }
+    setStatus("starting", "idle");
+    post(body, "start flow");
+  };
+
+  $("manualSend").onclick = function () {
+    var parsed;
+    try {
+      parsed = JSON.parse($("manualInputs").value || "{}");
+    } catch (e) {
+      alert("inputs must be valid JSON: " + e.message);
+      return;
+    }
+    var body = { flowId: flowId, actionId: $("manualAction").value.trim(), inputs: parsed };
+    if (!flowId) {
+      body = { flowType: FLOW_TYPE, actionId: body.actionId, inputs: parsed };
+    }
+    post(body, "manual " + (body.actionId || "(no action)"));
+  };
+
+  $("reset").onclick = function () {
+    flowId = null;
+    $("flowMeta").textContent = "";
+    $("log").innerHTML = '<span class="empty">Nothing sent yet.</span>';
+    $("step").innerHTML = '<span class="empty">Start the flow to begin.</span>';
+    setStatus("not started", "idle");
+  };
+})();
+</script>
+</body>
+</html>
