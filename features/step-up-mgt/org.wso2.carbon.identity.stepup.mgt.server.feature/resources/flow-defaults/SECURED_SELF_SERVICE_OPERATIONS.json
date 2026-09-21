@@ -41,7 +41,7 @@
                 "category": "DISPLAY",
                 "type": "TYPOGRAPHY",
                 "variant": "H5",
-                "config": {
+                "configs": {
                   "text": "Confirm it is you"
                 }
               },
@@ -50,12 +50,12 @@
                 "category": "FIELD",
                 "type": "INPUT",
                 "variant": "OTP",
-                "config": {
-                  "name": "otp",
+                "configs": {
                   "type": "text",
                   "label": "Verification code",
                   "required": true,
-                  "placeholder": "Enter the code we sent you"
+                  "placeholder": "Enter the code we sent you",
+                  "identifier": "otp"
                 }
               },
               {
@@ -70,8 +70,9 @@
                   },
                   "nextId": "attribute_collection"
                 },
-                "config": {
-                  "text": "Continue"
+                "configs": {
+                  "text": "Continue",
+                  "type": "submit"
                 }
               }
             ]
@@ -94,7 +95,7 @@
                 "category": "DISPLAY",
                 "type": "TYPOGRAPHY",
                 "variant": "H5",
-                "config": {
+                "configs": {
                   "text": "Update your mobile number"
                 }
               },
@@ -103,12 +104,12 @@
                 "category": "FIELD",
                 "type": "INPUT",
                 "variant": "TELEPHONE",
-                "config": {
-                  "name": "http://wso2.org/claims/mobile",
+                "configs": {
                   "type": "text",
                   "label": "New mobile number",
                   "required": true,
-                  "placeholder": "Enter the new mobile number"
+                  "placeholder": "Enter the new mobile number",
+                  "identifier": "http://wso2.org/claims/mobile"
                 }
               },
               {
@@ -123,8 +124,9 @@
                   },
                   "nextId": "operation_completion"
                 },
-                "config": {
-                  "text": "Save"
+                "configs": {
+                  "text": "Save",
+                  "type": "submit"
                 }
               }
             ]
@@ -155,7 +157,7 @@
             "category": "DISPLAY",
             "type": "TYPOGRAPHY",
             "variant": "H5",
-            "config": {
+            "configs": {
               "text": "Your details have been updated"
             }
           }
