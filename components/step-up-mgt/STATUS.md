@@ -138,9 +138,32 @@ they do.** They simply apply nothing when they differ. The superset-form design 
 `requiredParams`, and the renderer filtering on it — removes the possibility instead of logging it.
 Not built.
 
+**The callback must be derived from the application that started the flow, not supplied with it.**
+Today the callback arrives as a `callback_url` query parameter, is carried into the flow as
+`stepUp.validatedCallbackUrl`, and is redirected to unchanged. `SecuredOperationCompletionExecutor`
+refuses when the property is absent, but it cannot tell a value the server established from one a
+caller invented, so the name of that property currently overstates what has happened to it.
+
+The requirement is that the flow resolves the callback from the launching application itself — its
+registered redirect URIs — and accepts a requested value only when it matches one of them. A redirect
+out of a context that has just completed an authentication, to a location the caller chose, is an open
+redirect, and it is worth more here than usual because the ceremony that precedes it is what convinces
+the user the destination is trustworthy.
+
+This belongs in the seeding step, which is also where the launching application becomes known: the
+launch token carries `client_id` for exactly this reason. That executor ships in
+`identity-oauth2-grant-token-exchange`, which can see the OAuth application configuration and so can
+resolve the registered URIs; the framework cannot. The engine's own completion path already does
+something of this shape — `FlowExecutionEngineUtils.resolveCompletionRedirectionUrl` uses the
+application's registered access URL — but it takes no per-launch value, so it is a precedent rather
+than a mechanism to reuse.
+
+The `callback_url` parameter and the seed executor's default are PoC scaffolding and must not survive
+into the real seeding step.
+
 **The PoC seed trusts its input.** An access token is not a launch token: not single use, not
 restricted to the self-care application, carrying no operation scope, and carrying no `acr` or
-`auth_time`. The callback URL is likewise taken on trust. All of this is what Phase 2 closes.
+`auth_time`. All of this is what Phase 2 closes.
 
 ### Fixed during this work
 
