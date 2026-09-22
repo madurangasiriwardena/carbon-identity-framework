@@ -9,6 +9,111 @@
           "executor": {
             "name": "AccessTokenSeedExecutor"
           },
+          "nextId": "operation_router"
+        }
+      }
+    },
+    {
+      "id": "operation_router",
+      "type": "EXECUTION",
+      "data": {
+        "action": {
+          "type": "EXECUTOR",
+          "executor": {
+            "name": "OperationBranchExecutor",
+            "metadata": {
+              "branch.mobile": "choose_mobile",
+              "branch.email": "choose_email"
+            }
+          },
+          "nextId": "operation_choice"
+        }
+      }
+    },
+    {
+      "id": "operation_choice",
+      "type": "VIEW",
+      "data": {
+        "components": [
+          {
+            "id": "operation_choice_form",
+            "category": "BLOCK",
+            "type": "FORM",
+            "components": [
+              {
+                "id": "operation_choice_heading",
+                "category": "DISPLAY",
+                "type": "TYPOGRAPHY",
+                "variant": "H5",
+                "configs": {
+                  "text": "What would you like to change?"
+                }
+              },
+              {
+                "id": "choose_mobile",
+                "category": "BUTTON",
+                "type": "BUTTON",
+                "variant": "PRIMARY",
+                "action": {
+                  "type": "NEXT",
+                  "nextId": "select_mobile"
+                },
+                "configs": {
+                  "text": "Mobile number",
+                  "type": "submit"
+                }
+              },
+              {
+                "id": "choose_email",
+                "category": "BUTTON",
+                "type": "BUTTON",
+                "variant": "SECONDARY",
+                "action": {
+                  "type": "NEXT",
+                  "nextId": "select_email"
+                },
+                "configs": {
+                  "text": "Email address",
+                  "type": "submit"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "select_mobile",
+      "type": "EXECUTION",
+      "data": {
+        "action": {
+          "type": "EXECUTOR",
+          "executor": {
+            "name": "OperationSelectionExecutor",
+            "metadata": {
+              "branch": "mobile",
+              "operationType": "UPDATE_PROFILE",
+              "operationAttributes": "http://wso2.org/claims/mobile"
+            }
+          },
+          "nextId": "step_up_decision"
+        }
+      }
+    },
+    {
+      "id": "select_email",
+      "type": "EXECUTION",
+      "data": {
+        "action": {
+          "type": "EXECUTOR",
+          "executor": {
+            "name": "OperationSelectionExecutor",
+            "metadata": {
+              "branch": "email",
+              "operationType": "UPDATE_PROFILE",
+              "operationAttributes": "http://wso2.org/claims/emailaddress"
+            }
+          },
           "nextId": "step_up_decision"
         }
       }
@@ -68,7 +173,7 @@
                   "executor": {
                     "name": "EmailOTPExecutor"
                   },
-                  "nextId": "attribute_collection"
+                  "nextId": "collection_router"
                 },
                 "configs": {
                   "text": "Continue",
@@ -81,17 +186,86 @@
       }
     },
     {
-      "id": "attribute_collection",
+      "id": "collection_router",
+      "type": "EXECUTION",
+      "data": {
+        "action": {
+          "type": "EXECUTOR",
+          "executor": {
+            "name": "OperationBranchExecutor",
+            "metadata": {
+              "branch.mobile": "collect_mobile",
+              "branch.email": "collect_email"
+            }
+          },
+          "nextId": "collection_choice"
+        }
+      }
+    },
+    {
+      "id": "collection_choice",
       "type": "VIEW",
       "data": {
         "components": [
           {
-            "id": "attribute_form",
+            "id": "collection_choice_form",
             "category": "BLOCK",
             "type": "FORM",
             "components": [
               {
-                "id": "attribute_heading",
+                "id": "collection_choice_heading",
+                "category": "DISPLAY",
+                "type": "TYPOGRAPHY",
+                "variant": "H5",
+                "configs": {
+                  "text": "What would you like to change?"
+                }
+              },
+              {
+                "id": "collect_mobile",
+                "category": "BUTTON",
+                "type": "BUTTON",
+                "variant": "PRIMARY",
+                "action": {
+                  "type": "NEXT",
+                  "nextId": "mobile_collection"
+                },
+                "configs": {
+                  "text": "Mobile number",
+                  "type": "submit"
+                }
+              },
+              {
+                "id": "collect_email",
+                "category": "BUTTON",
+                "type": "BUTTON",
+                "variant": "SECONDARY",
+                "action": {
+                  "type": "NEXT",
+                  "nextId": "email_collection"
+                },
+                "configs": {
+                  "text": "Email address",
+                  "type": "submit"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "mobile_collection",
+      "type": "VIEW",
+      "data": {
+        "components": [
+          {
+            "id": "mobile_form",
+            "category": "BLOCK",
+            "type": "FORM",
+            "components": [
+              {
+                "id": "mobile_heading",
                 "category": "DISPLAY",
                 "type": "TYPOGRAPHY",
                 "variant": "H5",
@@ -100,7 +274,7 @@
                 }
               },
               {
-                "id": "attribute_mobile",
+                "id": "mobile_field",
                 "category": "FIELD",
                 "type": "INPUT",
                 "variant": "TELEPHONE",
@@ -113,7 +287,61 @@
                 }
               },
               {
-                "id": "attribute_submit",
+                "id": "mobile_submit",
+                "category": "BUTTON",
+                "type": "BUTTON",
+                "variant": "PRIMARY",
+                "action": {
+                  "type": "EXECUTOR",
+                  "executor": {
+                    "name": "SecuredOperationExecutor"
+                  },
+                  "nextId": "operation_completion"
+                },
+                "configs": {
+                  "text": "Save",
+                  "type": "submit"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "email_collection",
+      "type": "VIEW",
+      "data": {
+        "components": [
+          {
+            "id": "email_form",
+            "category": "BLOCK",
+            "type": "FORM",
+            "components": [
+              {
+                "id": "email_heading",
+                "category": "DISPLAY",
+                "type": "TYPOGRAPHY",
+                "variant": "H5",
+                "configs": {
+                  "text": "Update your email address"
+                }
+              },
+              {
+                "id": "email_field",
+                "category": "FIELD",
+                "type": "INPUT",
+                "variant": "EMAIL",
+                "configs": {
+                  "type": "text",
+                  "label": "New email address",
+                  "required": true,
+                  "placeholder": "Enter the new email address",
+                  "identifier": "http://wso2.org/claims/emailaddress"
+                }
+              },
+              {
+                "id": "email_submit",
                 "category": "BUTTON",
                 "type": "BUTTON",
                 "variant": "PRIMARY",

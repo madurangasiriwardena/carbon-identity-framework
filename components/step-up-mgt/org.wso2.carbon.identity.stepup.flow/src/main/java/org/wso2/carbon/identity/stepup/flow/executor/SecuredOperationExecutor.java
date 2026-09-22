@@ -38,6 +38,7 @@ import java.util.Collections;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -100,6 +101,7 @@ public class SecuredOperationExecutor implements Executor {
              tell the two apart. Claims updated by an earlier step, such as an OTP marking an address verified,
              appear here too without being anything this operation may write.
              */
+            warnIfFormCollectsSomethingElse(context);
             if (LOG.isDebugEnabled()) {
                 LOG.debug("No seeded attribute supplied yet for flow " + context.getContextIdentifier()
                         + ", asking for input. Seeded attributes: "
@@ -167,6 +169,42 @@ public class SecuredOperationExecutor implements Executor {
             }
         }
         return updates;
+    }
+
+    /**
+     * Says so when the form that reached this executor collects a claim this flow was not seeded for.
+     * <p>
+     * That pairing is what a flow author has to get right by hand, and getting it wrong produces no error: the
+     * executor keeps asking for input it will never be given, so the page simply reappears on every submit. The
+     * symptom looks nothing like the cause, hence this.
+     * <p>
+     * It stays a warning rather than a refusal because the inputs read here are the ones the engine last published
+     * for a step, which on the first pass through this node are still the previous step's. Only a mismatch that
+     * mentions claims at all is reported, so the ordinary first pass — arriving from an OTP step that collects no
+     * claim — says nothing.
+     *
+     * @param context Flow execution context.
+     */
+    private void warnIfFormCollectsSomethingElse(FlowExecutionContext context) {
+
+        if (!LOG.isWarnEnabled() || context.getCurrentStepInputs() == null) {
+            return;
+        }
+        Set<String> declared = new LinkedHashSet<>();
+        for (Set<String> inputs : context.getCurrentStepInputs().values()) {
+            if (inputs != null) {
+                declared.addAll(inputs);
+            }
+        }
+        boolean collectsClaims = declared.stream().anyMatch(input -> input != null && input.contains("/"));
+        Set<String> seeded = seededAttributes(context);
+        if (!collectsClaims || declared.stream().anyMatch(seeded::contains)) {
+            return;
+        }
+        LOG.warn("Flow " + context.getContextIdentifier() + " was seeded to update "
+                + StepUpFlowContextUtils.joinValues(seeded) + ", but the form reaching the operation step collects "
+                + StepUpFlowContextUtils.joinValues(declared) + ". Nothing will be applied and the step will keep "
+                + "asking for input until the two are the same.");
     }
 
     private Set<String> seededAttributes(FlowExecutionContext context) {

@@ -62,7 +62,8 @@ import static org.wso2.carbon.identity.flow.execution.engine.Constants.ExecutorS
  * <ul>
  *     <li>it is not single use, so it can be replayed for the life of the token;</li>
  *     <li>it is not restricted to the self-care application, so any token for any application is accepted;</li>
- *     <li>it carries no operation scope, so what the flow may change is taken from the request instead;</li>
+ *     <li>it is not bound to the request that launched it, so the branch the request asks for is taken on
+ *     trust;</li>
  *     <li>it ordinarily carries no {@code acr} and no {@code auth_time}, so there is usually no prior evidence to
  *     inherit and every configured factor comes out unsatisfied.</li>
  * </ul>
@@ -80,8 +81,7 @@ public class AccessTokenSeedExecutor implements Executor {
 
     private static final String INPUT_LAUNCH_TOKEN = "launchToken";
     private static final String INPUT_ACCESS_TOKEN = "accessToken";
-    private static final String INPUT_OPERATION_TYPE = "operationType";
-    private static final String INPUT_OPERATION_ATTRIBUTES = "operationAttributes";
+    private static final String INPUT_OPERATION = "operation";
     private static final String INPUT_CALLBACK_URL = "callbackUrl";
 
     private static final String CLAIM_ACR = "acr";
@@ -148,9 +148,20 @@ public class AccessTokenSeedExecutor implements Executor {
             return error("Error while resolving the subject of the access token.");
         }
 
+        /*
+         The operation the launching request asked for is recorded here, once, and read from the context from now
+         on. Re-reading it from the inputs later would let a subsequent submit change what the flow is enforcing
+         after the decision that enforced it has already been taken.
+
+         What is recorded is the branch, not the attribute: which attribute a branch updates is written in the flow
+         definition, so a caller naming a branch cannot name an attribute the flow does not offer. A request that
+         names no branch leaves this unset, and the flow asks.
+         */
         Map<String, Object> properties = new HashMap<>();
-        properties.put("stepUp.operationType", defaulted(inputs.get(INPUT_OPERATION_TYPE), "UPDATE_PROFILE"));
-        properties.put("stepUp.operationAttributes", defaulted(inputs.get(INPUT_OPERATION_ATTRIBUTES), MOBILE_CLAIM));
+        String branch = StringUtils.trimToNull(inputs.get(INPUT_OPERATION));
+        if (branch != null) {
+            properties.put("stepUp.operationBranch", branch);
+        }
         properties.put("stepUp.validatedCallbackUrl",
                 defaulted(inputs.get(INPUT_CALLBACK_URL), "https://localhost:9443/myaccount"));
         carryPriorEvidence(claims, properties);
@@ -309,8 +320,7 @@ public class AccessTokenSeedExecutor implements Executor {
     @Override
     public List<String> getInitiationData() {
 
-        return Arrays.asList(INPUT_LAUNCH_TOKEN, INPUT_ACCESS_TOKEN, INPUT_OPERATION_TYPE,
-                INPUT_OPERATION_ATTRIBUTES, INPUT_CALLBACK_URL);
+        return Arrays.asList(INPUT_LAUNCH_TOKEN, INPUT_ACCESS_TOKEN, INPUT_OPERATION, INPUT_CALLBACK_URL);
     }
 
     @Override

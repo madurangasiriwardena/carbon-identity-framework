@@ -47,6 +47,7 @@ import static org.wso2.carbon.identity.stepup.flow.constant.StepUpFlowConstants.
 import static org.wso2.carbon.identity.stepup.flow.constant.StepUpFlowConstants.ContextProperties.INHERITED_AUTH_TIME;
 import static org.wso2.carbon.identity.stepup.flow.constant.StepUpFlowConstants.ContextProperties.INHERITED_FACTORS;
 import static org.wso2.carbon.identity.stepup.flow.constant.StepUpFlowConstants.ContextProperties.OPERATION_ATTRIBUTES;
+import static org.wso2.carbon.identity.stepup.flow.constant.StepUpFlowConstants.ContextProperties.OPERATION_BRANCH;
 import static org.wso2.carbon.identity.stepup.flow.constant.StepUpFlowConstants.ContextProperties.OPERATION_TYPE;
 import static org.wso2.carbon.identity.stepup.flow.constant.StepUpFlowConstants.ContextProperties.OUTSTANDING_FACTORS;
 import static org.wso2.carbon.identity.stepup.flow.constant.StepUpFlowConstants.ContextProperties.VALIDATED_CALLBACK_URL;
@@ -115,6 +116,66 @@ public class StepUpFlowContextUtils {
                 .operationType(operationType)
                 .attributes(new LinkedHashSet<>(attributes))
                 .build();
+    }
+
+    /**
+     * The branch of the flow the seeded operation is performed by.
+     *
+     * @param context Flow execution context.
+     * @return The branch identifier, or null when no branch has been selected.
+     */
+    public static String getOperationBranch(FlowExecutionContext context) {
+
+        return readString(context, OPERATION_BRANCH);
+    }
+
+    /**
+     * Reads a value from the executor configuration of the node currently being executed.
+     * <p>
+     * This is flow definition data, authored by whoever wrote the flow. It is not request input and carries none of
+     * the doubt that request input does.
+     *
+     * @param context Flow execution context.
+     * @param key     Metadata key.
+     * @return The configured value, or null when the node declares none.
+     */
+    public static String getExecutorMetadata(FlowExecutionContext context, String key) {
+
+        Map<String, String> metadata = getExecutorMetadata(context);
+        return metadata == null ? null : StringUtils.trimToNull(metadata.get(key));
+    }
+
+    /**
+     * Reads the whole executor configuration of the node currently being executed.
+     *
+     * @param context Flow execution context.
+     * @return The configured metadata. Never null.
+     */
+    public static Map<String, String> getExecutorMetadata(FlowExecutionContext context) {
+
+        if (context == null || context.getCurrentNode() == null
+                || context.getCurrentNode().getExecutorConfig() == null
+                || context.getCurrentNode().getExecutorConfig().getMetadata() == null) {
+            return Collections.emptyMap();
+        }
+        return context.getCurrentNode().getExecutorConfig().getMetadata();
+    }
+
+    /**
+     * Splits a stored multi valued property or a configured multi valued metadata value.
+     *
+     * @param value Value to split.
+     * @return The separated values. Never null.
+     */
+    public static List<String> splitValues(String value) {
+
+        if (StringUtils.isBlank(value)) {
+            return new ArrayList<>();
+        }
+        return Arrays.stream(value.split(VALUE_SEPARATOR))
+                .map(String::trim)
+                .filter(StringUtils::isNotEmpty)
+                .collect(Collectors.toList());
     }
 
     /**
@@ -232,13 +293,6 @@ public class StepUpFlowContextUtils {
                     .filter(StringUtils::isNotEmpty)
                     .collect(Collectors.toList());
         }
-        String raw = value.toString();
-        if (StringUtils.isBlank(raw)) {
-            return new ArrayList<>();
-        }
-        return Arrays.stream(raw.split(VALUE_SEPARATOR))
-                .map(String::trim)
-                .filter(StringUtils::isNotEmpty)
-                .collect(Collectors.toList());
+        return splitValues(value.toString());
     }
 }

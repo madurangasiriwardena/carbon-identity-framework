@@ -1,6 +1,6 @@
 # Step-up authentication for self-service operations — status
 
-Working notes for the step-up implementation. Written 2026-09-21.
+Working notes for the step-up implementation. Written 2026-09-21, revised 2026-09-22.
 
 Covers what exists, what was decided and why, what is known to be wrong, and what has not been
 started. Everything here was verified against the code unless it says otherwise.
@@ -53,12 +53,16 @@ OSGi, `org.wso2.carbon.context` and `configuration.mgt.core`.
 `components/step-up-mgt/org.wso2.carbon.identity.stepup.flow`, plus `FlowTypes.SECURED_SELF_SERVICE_OPERATIONS`
 in `flow.mgt` and its arm in `FlowExecutionService.enterFlowInIdentityContext`.
 
-- `StepUpDecisionExecutor` — evaluates once, at seed time, against seeded evidence only
+- `OperationSelectionExecutor` — one per branch; fixes which operation the flow performs and refuses
+  a branch that disagrees with what the flow was seeded for
+- `OperationBranchExecutor` — answers a later fan-out from the branch already chosen, so the user is
+  asked once
+- `StepUpDecisionExecutor` — evaluates once, after the operation is known, against seeded evidence only
 - `SecuredOperationExecutor` — refuses if the decision never ran or a required factor was not
   performed; writes only the seeded attributes
 - `SecuredOperationCompletionExecutor` — redirects only to a callback carried on the context
 - Default flow definition shipped to `<carbon conf>/flow-defaults/SECURED_SELF_SERVICE_OPERATIONS.json`
-- 26 tests
+- 34 tests
 
 ### PoC tooling — `dev/step-up-local-testing` only
 
@@ -98,6 +102,40 @@ framework cannot depend on OAuth.
 **Phase 2 deferred.** Phase 3 was built first at the customer's request, with an access token standing
 in for the launch token.
 
+**Several protected attributes are handled by branching, not by one form that hides fields.** A VIEW
+step with more than one action becomes a decision node implicitly (`GraphBuilder.handleTempNodesInStep`),
+with one edge per button and `triggeringActionId` set to that button's component id. So a choice page
+and a branch per attribute need no engine change. The alternative considered — one superset form, with
+the executor naming the seeded subset in `requiredParams` and the renderer filtering on it — has no
+mechanism behind it; see the correction under *Problems found*.
+
+The shape is: seed → router → choice → per-branch selection → decision → step-up → router → collection
+branch → completion. It fans out twice because the decision and the OTP are shared and sit between the
+two fan-outs. Only the first fan-out is ever a question for the user; `UserChoiceDecisionNode` completes
+without rendering when an action has already been chosen, so `OperationBranchExecutor` answers the
+second from what the first recorded, and answers the first too when the launching request named a
+branch.
+
+**The launch token does not name the operation. The request does.** The argument that settled it: today
+any application holding an access token can already `PATCH /scim2/Me` and change any attribute the user
+may change, with no configuration on the IS side. Scoping the operation into the token would protect
+something that is not protected now. Phase 5 does not change that either — once SCIM2 starts refusing,
+the launch token becomes the only route, but it is still the same user changing their own attributes,
+and they may legitimately ask for any operation. The gate is the step-up, not the scope.
+
+Tampering with the parameter yields nothing: the subject is bound by the token, so a changed operation
+only ever reaches a different page for the caller's own profile, which they could have asked for
+directly. It is a routing parameter.
+
+What the request names is the **branch**, not the attribute. Which attribute a branch updates is
+written in the flow definition, so a caller naming a branch cannot name an attribute the flow does not
+offer.
+
+This leaves the launch token carrying four things and nothing else: `sub`, `client_id` for the callback
+derivation, `acr`/`amr`/`auth_time` for the decision, and single use with a short expiry. It removes the
+per-application operation allowlist, the scope-versus-claim question, and all exchange-time operation
+validation from Phase 2.
+
 ---
 
 ## 4. Problems found
@@ -132,11 +170,37 @@ builder in `identity-apps` — the three that exist are per-type packages. The A
 Console half is not, and sizing it properly means deciding whether those three packages can be
 generalised rather than a fourth copied.
 
-**The attribute the form collects and the attribute the seed permits must agree, and nothing checks
-they do.** They simply apply nothing when they differ. The superset-form design discussed for Phase 3
-— one form covering every protected attribute, a declaration executor emitting the seeded subset as
-`requiredParams`, and the renderer filtering on it — removes the possibility instead of logging it.
-Not built.
+**`requiredParams` filters nothing, and an earlier note here said it did.** The superset-form design
+recorded for Phase 4 — one form covering every protected attribute, an executor naming the seeded
+subset in `requiredParams`, the renderer filtering on it — assumed a client-side filter that does not
+exist. The only use of `requiredParams` anywhere in `identity-apps` is `execution-flow.jsp:378`, which
+supplies `origin` for an `INTERNAL_PROMPT`. Building that filter would be new work in the React
+renderer. Branching, which needs no engine or client change, is what the flow now does instead.
+
+**The form's attribute and the seeded attribute must still agree, and only a log says when they do
+not.** `SecuredOperationExecutor` applies nothing when they differ, and because applying nothing is
+also what the first pass through that node looks like, the page simply reappears on every submit. The
+symptom looks nothing like the cause, so the executor now warns with both lists named.
+
+It stays a warning rather than a refusal because the inputs it can see are `context.getCurrentStepInputs()`,
+which holds what the engine last published for a step — on the first pass through the node, still the
+previous step's. Making it a refusal needs a reliable "what was submitted in this request" signal,
+which the engine does not currently expose. With branching in place the pairing is also checkable
+statically: one branch per protected attribute, and each branch's collection form must carry that
+branch's claim. That belongs with the flow builder in Phase 6.
+
+**Nothing appears to bind a submitted `actionId` to the step that was just rendered.** It travels in
+the request body (`FlowExecutionService:134`) into the decision node's edge match, and `InputValidator:78-83`
+tolerates an action with no declared inputs by debug-logging and continuing. So a caller driving
+`/flow/execute` directly can plausibly reach a branch other than the one they were offered. This was
+not confirmed either way and should be.
+
+The design does not rest on the answer. Two checks make a forged branch harmless rather than merely
+unlikely: `OperationSelectionExecutor` refuses a branch that disagrees with the seeded operation, and
+`SecuredOperationExecutor` writes only seeded attributes. Without the first, a user could satisfy the
+factor required for a weakly protected attribute and then steer into the branch of one that requires
+a stronger factor — the decision and the write are on opposite sides of the second fan-out, and only
+the recorded operation ties them together.
 
 **The callback must be derived from the application that started the flow, not supplied with it.**
 Today the callback arrives as a `callback_url` query parameter, is carried into the flow as
@@ -175,6 +239,7 @@ restricted to the self-care application, carrying no operation scope, and carryi
 | The registration verification template told the user to verify their address to continue their registration | same | `EmailOTP`, the authenticator's own template; same `OTPCode` placeholder |
 | Default flow definition used `config`, `name` and non-submit buttons | flow definition | `configs`, `identifier`, `"type": "submit"` — see below |
 | `SecuredOperationExecutor` read the submitted value from `getUserInputData()` | `stepup.flow` | reads the flow user's updated claims |
+| The seed defaulted the operation to the mobile claim, so the choice page could never be reached and any other branch conflicted with it | `stepup.flow.testing` | the seed records the branch the request named, and records nothing when it named none |
 
 **The component shape trap is worth repeating.** A system default flow file deserialises straight into
 `ComponentDTO`, whose field is `configs`. The execution API renames it to `config` on the way out, so
@@ -216,6 +281,17 @@ From the Phase 2 spike, all verified against `identity-oauth2-grant-token-exchan
   single use and carries no `acr`/`auth_time`.
 - `requestedTokenType` is an instance field on a shared grant handler, assigned per request without
   reset, and echoed into the `issued_token_type` response parameter. Pre-existing concurrency bug.
+- `TokenExchangeGrantHandler.filterRequestedScopes` (lines 392-402) intersects the requested scopes
+  with the subject token's approved scopes, but `handleRequestedScopes` (421-427) applies that only
+  when the request carries subject *and* actor tokens or `TokenExchange.LimitScopesToSubjectToken` is
+  enabled. Otherwise the `else` branch assigns the requested scopes unfiltered.
+
+  This was briefly the proposed gate for scoping the launch token, and it cannot be: an application's
+  access token will never carry a self-service operation scope, so the intersection is empty. Worse,
+  the failure is silent — `setScope` is handed an empty array and a launch token is issued carrying
+  nothing, with no error. The operation is now taken from the request instead, so none of this is on
+  the path any more. Recorded because the silent-empty-scope behaviour is a trap for anything else
+  that reaches for this mechanism.
 
 Also: `AuthHistory` and `AuthenticatorConfig` carry **no timestamps**, and `SessionContext` holds a
 single `CreatedTimestamp`/`UpdatedTimestamp` pair that is overwritten on each subsequent
@@ -226,8 +302,16 @@ decision is taken at seed time.
 
 ## 6. Not started
 
-- **Phase 2** — launch token and the real seeding executor
-- **Phase 4** — hosted UI beyond what the accounts portal already renders
+- **Phase 2** — launch token and the real seeding executor. Reduced by the decision above to: a token
+  type carrying `sub`, `client_id`, `acr`/`amr`/`auth_time` and single use with a short expiry; the
+  callback resolved from the launching application's registered redirect URIs; and the executor itself.
+  The two open questions are where `acr`/`auth_time` come from, since the subject token carries none
+  and only the authorization grant cache entry has them, and how single use is enforced, since nothing
+  existing is safe to copy. Blocked first on `identity-oauth2-grant-token-exchange` pinning framework
+  `7.8.675` against the current `7.11.205-SNAPSHOT`: the executor SPI does not exist in that version.
+- **Phase 4** — hosted UI beyond what the accounts portal already renders. Smaller than it was: the
+  multi-attribute problem it was meant to solve is solved by branching, and the superset form it
+  proposed rested on a filter that does not exist.
 - **Phase 5** — REST enforcement in SCIM2, and `acr`/`auth_time` on access tokens and introspection.
   Until this exists, protected attributes remain freely updatable over `/scim2/Me` while the flow
   prompts for an OTP. That asymmetry is expected at this stage and is the open scoping question in the
@@ -256,7 +340,14 @@ path is not being exercised.
 https://localhost:9443/accounts/execution-flow.jsp
   ?flowType=SECURED_SELF_SERVICE_OPERATIONS&spId=<appId>
   &launch_token=<jwt>&callback_url=<where to land>
+  &operation=mobile
 ```
 
-The step-up prompt is the first screen. The OTP step needs two submits: the first with the field empty
-sends the code.
+`operation` names a branch of the flow — `mobile` or `email` in the shipped definition. Leave it off
+and the flow opens on a page asking which. Either way the OTP step needs two submits: the first with
+the field empty sends the code.
+
+Both the choice page and the collection fan-out are ordinary multi-button VIEW steps. Adding a third
+protected attribute means a button on each, an `OperationSelectionExecutor` node declaring the branch
+and its claim, a `branch.<name>` entry in both `OperationBranchExecutor` nodes, and a collection page
+whose field identifier is that claim.

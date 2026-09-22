@@ -28,6 +28,8 @@ public class StepUpFlowConstants {
      */
     public static final String FLOW_TYPE = "SECURED_SELF_SERVICE_OPERATIONS";
 
+    public static final String OPERATION_SELECTION_EXECUTOR = "OperationSelectionExecutor";
+    public static final String OPERATION_BRANCH_EXECUTOR = "OperationBranchExecutor";
     public static final String STEP_UP_DECISION_EXECUTOR = "StepUpDecisionExecutor";
     public static final String SECURED_OPERATION_EXECUTOR = "SecuredOperationExecutor";
     public static final String SECURED_OPERATION_COMPLETION_EXECUTOR = "SecuredOperationCompletionExecutor";
@@ -39,6 +41,42 @@ public class StepUpFlowConstants {
 
     private StepUpFlowConstants() {
 
+    }
+
+    /**
+     * Keys this component reads from the executor configuration of a node in the flow definition.
+     * <p>
+     * These are authored by whoever writes the flow, not supplied by a caller, and they describe the shape of the
+     * flow rather than anything about the request.
+     */
+    public static class ExecutorMetadata {
+
+        /**
+         * Operation type a branch of the flow performs. Read by the operation selection executor.
+         */
+        public static final String OPERATION_TYPE = "operationType";
+
+        /**
+         * Attributes a branch of the flow touches, separated by {@link #VALUE_SEPARATOR}. Read by the operation
+         * selection executor.
+         */
+        public static final String OPERATION_ATTRIBUTES = "operationAttributes";
+
+        /**
+         * Identifier of the branch. Written to the context by the operation selection executor and mapped back to
+         * an action by the operation branch executor.
+         */
+        public static final String BRANCH = "branch";
+
+        /**
+         * Prefix of the branch to action mappings read by the operation branch executor. The remainder of the key
+         * is a branch identifier and the value is the identifier of the action that reaches it.
+         */
+        public static final String BRANCH_ACTION_PREFIX = "branch.";
+
+        private ExecutorMetadata() {
+
+        }
     }
 
     /**
@@ -81,6 +119,12 @@ public class StepUpFlowConstants {
          * Attributes the seeded operation will touch, separated by {@link #VALUE_SEPARATOR}.
          */
         public static final String OPERATION_ATTRIBUTES = PREFIX + "operationAttributes";
+
+        /**
+         * Branch of the flow the seeded operation is performed by. Written once, by whichever operation selection
+         * node the flow passed through, and read afterwards to route the collection step without prompting again.
+         */
+        public static final String OPERATION_BRANCH = PREFIX + "operationBranch";
 
         /**
          * Factors the seed-time decision found unsatisfied, separated by {@link #VALUE_SEPARATOR}.
@@ -133,7 +177,16 @@ public class StepUpFlowConstants {
                 "The flow carries no callback that was validated against the launching application"),
         ERROR_CODE_NOTHING_TO_APPLY("65108",
                 "No attribute value was provided.",
-                "None of the attributes this flow was seeded for carry a new value");
+                "None of the attributes this flow was seeded for carry a new value"),
+        ERROR_CODE_BRANCH_CONFLICTS_WITH_SEED("65109",
+                "The requested operation does not match this flow.",
+                "This branch performs %s, but the flow was seeded to perform %s"),
+        ERROR_CODE_NO_BRANCH_CONFIGURED("65110",
+                "Error in the flow configuration.",
+                "The operation selection node declares no operation to select"),
+        ERROR_CODE_NO_ACTION_FOR_BRANCH("65111",
+                "Error in the flow configuration.",
+                "No action is configured for branch, %s");
 
         private static final String ERROR_PREFIX = "SSO";
         private final String code;
