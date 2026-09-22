@@ -30,7 +30,7 @@ protected set takes effect on every path at once.
 | `carbon-identity-framework` | `feat/step-up-flow` (off Phase 1) | Phase 3 + fixes |
 | `carbon-identity-framework` | `dev/step-up-local-testing` (off Phase 3) | PoC tooling, not for merge |
 | `identity-local-auth-emailotp` | `feat/secured-self-service-operations-otp` | 2 commits |
-| `identity-apps` | `feat/secured-self-service-operations-flow` | 3 commits |
+| `identity-apps` | `feat/secured-self-service-operations-flow` | 4 commits, incl. the Console builder |
 | `identity-api-server` | `feat/secured-self-service-operations-flow-meta` | Phase 6, API half |
 
 Nothing is pushed. `dev/step-up-local-testing` contains everything and is what the running pack is
@@ -173,10 +173,16 @@ anything. The 500 came from one place only: `ServerFlowMgtService.resolveHandler
 listing anywhere: `Utils.getSupportedExtensionExecutors(flowType)` resolves them from the engine by
 `Executor.getSupportedFlowTypes()`, which all five already declare.
 
-What remains is a fourth flow builder package in `identity-apps`. The three that exist share
-`admin.flow-builder-core.v1` (146 files, ~18k lines) but each still ships 53-57 files of its own,
-around 5-6k lines — AI generation, extended property panels, migrations, a per-type
-`transform-flow.ts`, and `steps.json`/`elements.json`/`widgets.json`.
+A fourth flow builder package now exists: `admin.secured-self-service-flow-builder.v1`, 18 files and
+about 1,000 lines against the 53-57 files and 5-6k lines of the three before it. Almost all of that
+difference is things this flow does not need. It contributes no element of its own, so it uses
+`CommonElementFactory`, the core `ResourceProperties` and the core palette rather than wrapping them;
+and it ships no AI generation, no migrations and no resource JSON. What it does carry is the edge
+building, the transform on save, the provider and the page.
+
+It has been syntax checked but not compiled. The workspace lockfile here was written by pnpm 10.33.0
+and the installed pnpm is 11.13.1, which wants to purge `node_modules` before it will install, so no
+package in this checkout currently has its dependencies linked and there is no type-check to run.
 
 **Branching survives the Console, which was the risk worth checking first.** All three existing
 builders are linear and this flow is a 13-step graph with two fan-outs, so the concern was that the
@@ -357,7 +363,9 @@ decision is taken at seed time.
   Until this exists, protected attributes remain freely updatable over `/scim2/Me` while the flow
   prompts for an OTP. That asymmetry is expected at this stage and is the open scoping question in the
   brief.
-- **Phase 6** — Console. The API half is done: a `SecuredSelfServiceOperationsFlowMetaHandler`, its
+- **Phase 6** — mostly done. The Console lists the flow and opens it in a builder; what is left is an
+  editor for executor configuration, without which a branch can be rearranged but not authored, and a
+  compile of the new package. The API half: a `SecuredSelfServiceOperationsFlowMetaHandler`, its
   case in `resolveHandler`, and the flow type added to every `flowType` enum in `flow.yaml` and the
   checked-in `FlowApi`. That branch also bumps `carbon.identity.framework.version` from `7.11.195` to
   `7.11.205-SNAPSHOT`, because `Constants.FlowTypes.SECURED_SELF_SERVICE_OPERATIONS` does not exist in
