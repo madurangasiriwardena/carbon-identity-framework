@@ -178,10 +178,38 @@ What remains is a fourth flow builder package in `identity-apps`. The three that
 around 5-6k lines — AI generation, extended property panels, migrations, a per-type
 `transform-flow.ts`, and `steps.json`/`elements.json`/`widgets.json`.
 
-Two things to establish before copying a fourth. All three existing builders are linear, and this flow
-is a 13-step graph with two fan-outs, so whether the canvas and `transform-flow` round-trip branching
-without mangling it is unknown. And `ServerFlowMgtService` runs `validateExecutors` and
-`validateIdentifiers` on save, so anything the builder emits has to satisfy the handler above.
+**Branching survives the Console, which was the risk worth checking first.** All three existing
+builders are linear and this flow is a 13-step graph with two fan-outs, so the concern was that the
+canvas would flatten it. It does not. Four places all turn out to be branch-agnostic:
+
+- **Load.** `createEdgesForButtons` is called for every button on a step, so a step with several
+  buttons gets several outgoing edges.
+- **Save.** `transformFlow` keys its navigation map by `sourceHandle`, which is a *resource* id, and
+  applies it to components recursively — not once per step.
+- **Wire format.** Executor configuration round-trips as arbitrary string key/values, renamed
+  `metadata` → `meta` on the way out and back in `Utils.convertToExecutorDTO`. Unknown fields on
+  `step.data` are spread through untouched.
+- **Server validation.** `validateNodeConnectivity` only requires a non-blank `next` on each action.
+  It assumes nothing about arity.
+
+Replaying the load and save transformations over the shipped definition gives 14 edges across 13
+steps, both fan-outs (`operation_choice`, `collection_choice`) and both convergence points
+(`step_up_decision`, `operation_completion`) intact, every navigation preserved, and the branch
+metadata on all four routing nodes preserved. That is a replay of the logic rather than the code
+itself, so it is strong evidence and not a passing test.
+
+Two further things that make this cheaper than it looked. `validateFlowType` checks against
+`Constants.FlowTypes.values()`, so there is no separate list of types to keep in step — the Swagger
+`allowableValues` are documentation and enforce nothing. And `FlowMgtService.getFlow` falls back to
+`SystemDefaultFlowProvider`, so `GET /flow` returns the shipped definition for a tenant that has never
+saved one: the Console has something real to render from the first load.
+
+What remains is the package itself, and almost none of its bulk is about branching — it is AI
+generation, extended property panels, migrations, and the `steps.json`/`elements.json`/`widgets.json`
+palette. A lean fourth package can drop the first three. The one real gap is that executor metadata
+round-trips but has no editor, so the Console could rearrange this flow but not author a new branch
+until a small property panel is added for it, in the way `federation-properties.tsx` edits
+`meta.idp`.
 
 **`requiredParams` filters nothing, and an earlier note here said it did.** The superset-form design
 recorded for Phase 4 — one form covering every protected attribute, an executor naming the seeded
