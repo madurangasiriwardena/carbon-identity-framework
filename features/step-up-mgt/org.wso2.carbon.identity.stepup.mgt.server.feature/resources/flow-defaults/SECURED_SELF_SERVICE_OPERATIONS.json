@@ -86,11 +86,7 @@
         "action": {
           "type": "EXECUTOR",
           "executor": {
-            "name": "OperationBranchExecutor",
-            "metadata": {
-              "branch.mobile": "choose_mobile",
-              "branch.email": "choose_email"
-            }
+            "name": "OperationBranchExecutor"
           },
           "nextId": "operation_choice"
         }
@@ -197,10 +193,7 @@
                   "type": "EXECUTOR",
                   "nextId": "operation_completion",
                   "executor": {
-                    "name": "SecuredOperationExecutor",
-                    "metadata": {
-                      "operationAttributes": "http://wso2.org/claims/mobile"
-                    }
+                    "name": "SecuredOperationExecutor"
                   }
                 },
                 "configs": {
@@ -258,10 +251,7 @@
                   "type": "EXECUTOR",
                   "nextId": "operation_completion",
                   "executor": {
-                    "name": "SecuredOperationExecutor",
-                    "metadata": {
-                      "operationAttributes": "http://wso2.org/claims/emailaddress"
-                    }
+                    "name": "SecuredOperationExecutor"
                   }
                 },
                 "configs": {

@@ -24,17 +24,24 @@ import org.apache.commons.logging.LogFactory;
 import org.wso2.carbon.identity.flow.execution.engine.graph.AuthenticationExecutor;
 import org.wso2.carbon.identity.flow.execution.engine.graph.Executor;
 import org.wso2.carbon.identity.flow.execution.engine.model.FlowExecutionContext;
+import org.wso2.carbon.identity.flow.mgt.model.ComponentDTO;
+import org.wso2.carbon.identity.flow.mgt.model.GraphConfig;
 import org.wso2.carbon.identity.flow.mgt.model.NodeConfig;
+import org.wso2.carbon.identity.flow.mgt.model.NodeEdge;
+import org.wso2.carbon.identity.flow.mgt.model.StepDTO;
 import org.wso2.carbon.identity.stepup.flow.internal.component.StepUpFlowComponentServiceHolder;
 import org.wso2.carbon.identity.stepup.mgt.api.model.AuthenticationContextView;
 import org.wso2.carbon.identity.stepup.mgt.api.model.StepUpOperation;
 
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Deque;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -42,6 +49,8 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import static org.wso2.carbon.identity.flow.execution.engine.Constants.CLAIM_URI_PREFIX;
+import static org.wso2.carbon.identity.flow.execution.engine.Constants.IDENTIFIER;
 import static org.wso2.carbon.identity.stepup.flow.constant.StepUpFlowConstants.ContextProperties.DECISION_EVALUATED;
 import static org.wso2.carbon.identity.stepup.flow.constant.StepUpFlowConstants.ContextProperties.INHERITED_ACR;
 import static org.wso2.carbon.identity.stepup.flow.constant.StepUpFlowConstants.ContextProperties.INHERITED_AUTH_TIME;
@@ -248,6 +257,133 @@ public class StepUpFlowContextUtils {
             }
         }
         return factors;
+    }
+
+    /**
+     * The attributes a step collects, taken from the fields on its own page.
+     * <p>
+     * A field's {@code identifier} is the claim it writes, which is what the flow author chooses when they place
+     * the field. Reading it here means the page is the declaration: there is no second place to state which
+     * attribute a step is for, and so no second place to get it wrong.
+     *
+     * @param context Flow execution context.
+     * @param stepId  Step whose page to read.
+     * @return Claim URIs the step collects. Never null.
+     */
+    public static Set<String> getAttributesCollectedBy(FlowExecutionContext context, String stepId) {
+
+        Set<String> attributes = new LinkedHashSet<>();
+        StepDTO page = pageOf(context, stepId);
+        if (page != null && page.getData() != null) {
+            collectClaimIdentifiers(page.getData().getComponents(), attributes);
+        }
+        return attributes;
+    }
+
+    /**
+     * The actions that reach a branch collecting the given attribute.
+     * <p>
+     * Resolved from the graph rather than configured: the flow already says which page collects which attribute,
+     * and which action leads to which branch. Requiring an author to restate that as a mapping would mean copying
+     * generated component identifiers by hand.
+     *
+     * @param context   Flow execution context.
+     * @param attribute Claim URI the caller asked to change.
+     * @return Identifiers of the actions whose branch collects it. Empty when none does; more than one when the
+     *     flow is ambiguous.
+     */
+    public static List<String> resolveActionsForAttribute(FlowExecutionContext context, String attribute) {
+
+        List<String> actions = new ArrayList<>();
+        if (context == null || context.getGraphConfig() == null || context.getCurrentNode() == null
+                || StringUtils.isBlank(attribute)) {
+            return actions;
+        }
+        GraphConfig graph = context.getGraphConfig();
+        NodeConfig fanOut = nextNodeOf(graph, context.getCurrentNode());
+        if (fanOut == null) {
+            return actions;
+        }
+        for (NodeEdge edge : fanOut.getEdges()) {
+            if (StringUtils.isNotBlank(edge.getTriggeringActionId())
+                    && branchCollects(context, graph, edge.getTargetNodeId(), attribute)) {
+                actions.add(edge.getTriggeringActionId());
+            }
+        }
+        return actions;
+    }
+
+    private static NodeConfig nextNodeOf(GraphConfig graph, NodeConfig node) {
+
+        if (StringUtils.isNotBlank(node.getNextNodeId())) {
+            return graph.getNodeConfigs().get(node.getNextNodeId());
+        }
+        for (NodeEdge edge : node.getEdges()) {
+            NodeConfig target = graph.getNodeConfigs().get(edge.getTargetNodeId());
+            if (target != null) {
+                return target;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Whether any page reachable from a branch collects the attribute.
+     * <p>
+     * Walked forward rather than assuming the branch is one step long, because a branch may carry an
+     * authentication step of its own ahead of the page that collects. Branches converge, so the walk passes
+     * through the shared tail; nothing there collects an attribute, and a flow where something did would be
+     * genuinely ambiguous rather than silently resolved.
+     */
+    private static boolean branchCollects(FlowExecutionContext context, GraphConfig graph, String startNodeId,
+                                          String attribute) {
+
+        Set<String> seen = new HashSet<>();
+        Deque<String> pending = new ArrayDeque<>();
+        pending.add(startNodeId);
+        while (!pending.isEmpty()) {
+            String nodeId = pending.poll();
+            if (nodeId == null || !seen.add(nodeId)) {
+                continue;
+            }
+            if (getAttributesCollectedBy(context, nodeId).contains(attribute)) {
+                return true;
+            }
+            NodeConfig node = graph.getNodeConfigs().get(nodeId);
+            if (node == null) {
+                continue;
+            }
+            if (StringUtils.isNotBlank(node.getNextNodeId())) {
+                pending.add(node.getNextNodeId());
+            }
+            node.getEdges().forEach(edge -> pending.add(edge.getTargetNodeId()));
+        }
+        return false;
+    }
+
+    private static StepDTO pageOf(FlowExecutionContext context, String stepId) {
+
+        if (context == null || context.getGraphConfig() == null || StringUtils.isBlank(stepId)) {
+            return null;
+        }
+        return context.getGraphConfig().getNodePageMappings().get(stepId);
+    }
+
+    private static void collectClaimIdentifiers(List<ComponentDTO> components, Set<String> into) {
+
+        if (components == null) {
+            return;
+        }
+        for (ComponentDTO component : components) {
+            if (component == null) {
+                continue;
+            }
+            Object identifier = component.getConfigs() == null ? null : component.getConfigs().get(IDENTIFIER);
+            if (identifier != null && identifier.toString().startsWith(CLAIM_URI_PREFIX)) {
+                into.add(identifier.toString());
+            }
+            collectClaimIdentifiers(component.getComponents(), into);
+        }
     }
 
     /**

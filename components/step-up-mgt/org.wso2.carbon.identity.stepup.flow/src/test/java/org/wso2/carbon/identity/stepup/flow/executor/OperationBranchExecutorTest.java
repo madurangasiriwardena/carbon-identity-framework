@@ -22,8 +22,8 @@ import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 import org.wso2.carbon.identity.flow.execution.engine.model.ExecutorResponse;
 import org.wso2.carbon.identity.flow.execution.engine.model.FlowExecutionContext;
-import org.wso2.carbon.identity.flow.mgt.model.ExecutorDTO;
 import org.wso2.carbon.identity.flow.mgt.model.NodeConfig;
+import org.wso2.carbon.identity.stepup.flow.TestGraphs;
 import org.wso2.carbon.identity.stepup.flow.constant.StepUpFlowConstants;
 
 import java.util.HashMap;
@@ -39,9 +39,13 @@ import static org.wso2.carbon.identity.stepup.flow.constant.StepUpFlowConstants.
  * Unit tests of {@link OperationBranchExecutor}.
  * <p>
  * What this executor does is set the action the engine's decision node reads, so the assertions are about the
- * action left on the context rather than about the response.
+ * action left on the context rather than about the response. The flow is built as a graph rather than as
+ * configuration, because the graph is now what the executor reads.
  */
 public class OperationBranchExecutorTest {
+
+    private static final String MOBILE_CLAIM = "http://wso2.org/claims/mobile";
+    private static final String EMAIL_CLAIM = "http://wso2.org/claims/emailaddress";
 
     private OperationBranchExecutor executor;
     private FlowExecutionContext context;
@@ -52,25 +56,94 @@ public class OperationBranchExecutorTest {
         executor = new OperationBranchExecutor();
         context = new FlowExecutionContext();
         context.setContextIdentifier("flow-1");
-        Map<String, String> metadata = new HashMap<>();
-        metadata.put(StepUpFlowConstants.ExecutorMetadata.BRANCH_ACTION_PREFIX + "mobile", "collect_mobile");
-        metadata.put(StepUpFlowConstants.ExecutorMetadata.BRANCH_ACTION_PREFIX + "email", "collect_email");
-        context.setCurrentNode(new NodeConfig.Builder()
-                .id("collection_router")
-                .executorConfig(new ExecutorDTO(StepUpFlowConstants.OPERATION_BRANCH_EXECUTOR, metadata))
+
+        Map<String, String> branches = new HashMap<>();
+        branches.put("choose_mobile", "mobile_collection");
+        branches.put("choose_email", "email_collection");
+
+        context.setGraphConfig(TestGraphs.builder()
+                .node("operation_router", "operation_choice")
+                .decision("operation_choice", branches)
+                .page("mobile_collection", "operation_completion", MOBILE_CLAIM)
+                .page("email_collection", "operation_completion", EMAIL_CLAIM)
+                .node("operation_completion", "END")
                 .build());
+
+        NodeConfig router = new NodeConfig.Builder().id("operation_router").build();
+        router.setNextNodeId("operation_choice");
+        context.setCurrentNode(router);
     }
 
-    @Test(description = "A chosen branch is answered by naming the action that reaches it, which is what lets the "
-            + "decision node that follows complete without rendering its page.")
-    public void testChosenBranchSetsTheAction() {
+    @Test(description = "The attribute the caller asked for is answered by naming the action whose branch collects "
+            + "it, which is what lets the decision node that follows complete without rendering its page.")
+    public void testRequestedAttributeSetsTheAction() {
 
-        context.setProperty(OPERATION_BRANCH, "email");
+        context.setProperty(OPERATION_BRANCH, EMAIL_CLAIM);
 
         ExecutorResponse response = executor.execute(context);
 
         assertEquals(response.getResult(), STATUS_COMPLETE);
-        assertEquals(context.getCurrentActionId(), "collect_email");
+        assertEquals(context.getCurrentActionId(), "choose_email");
+    }
+
+    @Test(description = "A branch is found through an authentication step placed ahead of the page that collects, "
+            + "so a factor specific to one attribute does not hide the branch it belongs to.")
+    public void testBranchFoundBehindAnEarlierStep() {
+
+        Map<String, String> branches = new HashMap<>();
+        branches.put("choose_mobile", "mobile_otp");
+
+        context.setGraphConfig(TestGraphs.builder()
+                .node("operation_router", "operation_choice")
+                .decision("operation_choice", branches)
+                .node("mobile_otp", "mobile_collection")
+                .page("mobile_collection", "operation_completion", MOBILE_CLAIM)
+                .node("operation_completion", "END")
+                .build());
+        context.setProperty(OPERATION_BRANCH, MOBILE_CLAIM);
+
+        ExecutorResponse response = executor.execute(context);
+
+        assertEquals(response.getResult(), STATUS_COMPLETE);
+        assertEquals(context.getCurrentActionId(), "choose_mobile");
+    }
+
+    @Test(description = "An attribute no branch collects is refused, rather than passing through to a choice page "
+            + "that could not satisfy the request either.")
+    public void testAttributeNoBranchCollectsIsRefused() {
+
+        context.setProperty(OPERATION_BRANCH, "http://wso2.org/claims/nickname");
+
+        ExecutorResponse response = executor.execute(context);
+
+        assertEquals(response.getResult(), STATUS_ERROR);
+        assertEquals(response.getErrorCode(),
+                StepUpFlowConstants.ErrorMessages.ERROR_CODE_NO_BRANCH_FOR_ATTRIBUTE.getCode());
+        assertNull(context.getCurrentActionId());
+    }
+
+    @Test(description = "A flow where more than one branch collects the attribute is refused rather than resolved "
+            + "arbitrarily: which branch the caller meant is genuinely unknown.")
+    public void testAmbiguousBranchIsRefused() {
+
+        Map<String, String> branches = new HashMap<>();
+        branches.put("choose_one", "first_collection");
+        branches.put("choose_two", "second_collection");
+
+        context.setGraphConfig(TestGraphs.builder()
+                .node("operation_router", "operation_choice")
+                .decision("operation_choice", branches)
+                .page("first_collection", "operation_completion", MOBILE_CLAIM)
+                .page("second_collection", "operation_completion", MOBILE_CLAIM)
+                .node("operation_completion", "END")
+                .build());
+        context.setProperty(OPERATION_BRANCH, MOBILE_CLAIM);
+
+        ExecutorResponse response = executor.execute(context);
+
+        assertEquals(response.getResult(), STATUS_ERROR);
+        assertEquals(response.getErrorCode(),
+                StepUpFlowConstants.ErrorMessages.ERROR_CODE_AMBIGUOUS_BRANCH.getCode());
     }
 
     @Test(description = "A flow that has committed to no branch is the ordinary way into a choice page, so it "
@@ -83,17 +156,4 @@ public class OperationBranchExecutorTest {
         assertNull(context.getCurrentActionId());
     }
 
-    @Test(description = "A branch with no action configured is refused. Passing through would render a choice the "
-            + "user has already answered, which reads as the answer having been lost.")
-    public void testBranchWithNoActionIsRefused() {
-
-        context.setProperty(OPERATION_BRANCH, "password");
-
-        ExecutorResponse response = executor.execute(context);
-
-        assertEquals(response.getResult(), STATUS_ERROR);
-        assertEquals(response.getErrorCode(),
-                StepUpFlowConstants.ErrorMessages.ERROR_CODE_NO_ACTION_FOR_BRANCH.getCode());
-        assertNull(context.getCurrentActionId());
-    }
 }

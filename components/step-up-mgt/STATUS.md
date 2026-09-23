@@ -60,7 +60,7 @@ in `flow.mgt` and its arm in `FlowExecutionService.enterFlowInIdentityContext`.
 - `StepUpDecisionExecutor` — retained but no longer in the default flow; see the decision below
 - `SecuredOperationCompletionExecutor` — redirects only to a callback carried on the context
 - Default flow definition shipped to `<carbon conf>/flow-defaults/SECURED_SELF_SERVICE_OPERATIONS.json`
-- 28 tests
+- 33 tests
 
 ### PoC tooling — `dev/step-up-local-testing` only
 
@@ -125,11 +125,25 @@ Sharing a factor across branches is safe exactly when every branch requires it �
 to borrow. The moment one attribute needs something stronger, that factor moves into its branch, which
 is adding a node to a branch that already exists rather than reshaping the flow.
 
-**Which attribute a step may write is declared on the step.** `SecuredOperationExecutor` reads
-`operationAttributes` from its own node configuration. The executor sits in the branch that collects the
-attribute, so the branch already says which one it is: nothing carries it between steps, and nothing can
-change it in between. This replaced a seeded operation on the flow context, and with it the executor
-that recorded the operation per branch.
+**The flow is asked for a claim, and answers from its own shape.** Nothing about the branching is
+configured. `SecuredOperationExecutor` takes the attributes it may write from the fields on its own
+page — a field's `identifier` is the claim it writes, which is what an author chooses when they place
+the field — and `OperationBranchExecutor` resolves the action for a requested claim by walking the
+graph: `GraphConfig.getNodePageMappings()` carries the page of every step, so it can find which branch
+collects the claim and which action reaches it.
+
+Two earlier shapes were discarded on the way. A seeded operation carried on the flow context, with an
+executor per branch to record it; and then executor metadata, `operationAttributes` on the collection
+step and `branch.<name>` on the router. Both failed the same test: they could not be authored in the
+Console. There is no editor for arbitrary executor metadata, and the router's value had to equal a
+button's component identifier, which the editor generates. Adding an attribute would have meant copying
+a generated id from one node into another by hand.
+
+Deriving it instead means a third attribute is purely an editor operation — add a page with the right
+field, add a button, draw the edge — and the request names the claim directly
+(`operation=http://wso2.org/claims/mobile`) rather than an invented word. The trade is that the form
+becomes the declaration, so adding a field to a collection page widens what that page may write. Since
+the page and the executor are authored together, that is the honest place for it to live.
 
 **The request names the branch, not the attribute, and not the token.** Today any application holding an
 access token can already `PATCH /scim2/Me` and change any attribute the user may change, with no
@@ -468,10 +482,10 @@ https://localhost:9443/accounts/execution-flow.jsp
   &operation=mobile
 ```
 
-`operation` names a branch — `mobile` or `email` in the shipped definition. Leave it off and the choice
-page renders after the OTP instead. The OTP step needs two submits: the first with the field empty sends
-the code.
+`operation` names the claim to change — `http://wso2.org/claims/mobile` or
+`http://wso2.org/claims/emailaddress` in the shipped definition, URL encoded. Leave it off and the
+choice page renders after the OTP instead. The OTP step needs two submits: the first with the field
+empty sends the code.
 
-Adding a third protected attribute means a button on the choice page, a collection step whose field
-identifier is the claim and whose `SecuredOperationExecutor` node declares the same claim in
-`operationAttributes`, and a `branch.<name>` entry on the router.
+Adding a third protected attribute means a button on the choice page and a collection step whose field
+identifier is the claim. Nothing else: no metadata, and no identifiers to copy between nodes.

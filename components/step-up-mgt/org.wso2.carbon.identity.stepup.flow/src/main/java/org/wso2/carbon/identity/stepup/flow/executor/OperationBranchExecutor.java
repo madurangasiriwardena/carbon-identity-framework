@@ -28,7 +28,6 @@ import org.wso2.carbon.identity.flow.execution.engine.model.FlowExecutionContext
 import org.wso2.carbon.identity.flow.mgt.Constants.FlowTypes;
 import org.wso2.carbon.identity.stepup.flow.constant.StepUpFlowConstants;
 import org.wso2.carbon.identity.stepup.flow.constant.StepUpFlowConstants.ErrorMessages;
-import org.wso2.carbon.identity.stepup.flow.constant.StepUpFlowConstants.ExecutorMetadata;
 import org.wso2.carbon.identity.stepup.flow.util.StepUpFlowContextUtils;
 
 import java.util.Collections;
@@ -55,9 +54,9 @@ import static org.wso2.carbon.identity.flow.execution.engine.Constants.ExecutorS
  * branch that is chosen but maps to no action is, because a flow that asks the same question twice looks to the
  * user like the first answer was lost.
  * <p>
- * The branch to action mapping is read from this node's own configuration, under keys prefixed {@code branch.}.
- * Values are identifiers of the actions in the step that follows, which for a button is the identifier of the
- * button component.
+ * Nothing is configured here. The attribute the caller asked to change names a claim, the flow already says which
+ * page collects which claim, and the graph already says which action leads to which branch, so the action is
+ * resolved from the flow rather than restated as a mapping an author would have to keep in step by hand.
  */
 public class OperationBranchExecutor implements Executor {
 
@@ -82,14 +81,19 @@ public class OperationBranchExecutor implements Executor {
             return new ExecutorResponse(STATUS_COMPLETE);
         }
 
-        String actionId = StepUpFlowContextUtils.getExecutorMetadata(context,
-                ExecutorMetadata.BRANCH_ACTION_PREFIX + branch);
-        if (StringUtils.isBlank(actionId)) {
-            LOG.warn("No action configured for branch " + branch + " of flow "
-                    + context.getContextIdentifier() + ".");
-            return errorResponse(ErrorMessages.ERROR_CODE_NO_ACTION_FOR_BRANCH,
-                    String.format(ErrorMessages.ERROR_CODE_NO_ACTION_FOR_BRANCH.getDescription(), branch));
+        List<String> actions = StepUpFlowContextUtils.resolveActionsForAttribute(context, branch);
+        if (actions.isEmpty()) {
+            LOG.warn("No branch of flow " + context.getContextIdentifier() + " collects " + branch + ".");
+            return errorResponse(ErrorMessages.ERROR_CODE_NO_BRANCH_FOR_ATTRIBUTE,
+                    String.format(ErrorMessages.ERROR_CODE_NO_BRANCH_FOR_ATTRIBUTE.getDescription(), branch));
         }
+        if (actions.size() > 1) {
+            LOG.warn("More than one branch of flow " + context.getContextIdentifier() + " collects " + branch
+                    + ". Refusing to choose between them.");
+            return errorResponse(ErrorMessages.ERROR_CODE_AMBIGUOUS_BRANCH,
+                    String.format(ErrorMessages.ERROR_CODE_AMBIGUOUS_BRANCH.getDescription(), branch));
+        }
+        String actionId = actions.get(0);
 
         /*
          Setting the action is what lets the decision node that follows resolve without prompting. It survives to

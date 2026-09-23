@@ -43,34 +43,6 @@ public class StepUpFlowConstants {
     }
 
     /**
-     * Keys this component reads from the executor configuration of a node in the flow definition.
-     * <p>
-     * These are authored by whoever writes the flow, not supplied by a caller, and they describe the shape of the
-     * flow rather than anything about the request.
-     */
-    public static class ExecutorMetadata {
-
-        /**
-         * Attributes the step this executor sits on may write, separated by {@link #VALUE_SEPARATOR}.
-         * <p>
-         * Read from the node rather than from the flow context on purpose: the executor that writes an attribute
-         * sits in the branch that collects it, so the branch already says which attribute it is. Nothing has to
-         * carry it from one step to another, and so nothing can change it in between.
-         */
-        public static final String OPERATION_ATTRIBUTES = "operationAttributes";
-
-        /**
-         * Prefix of the branch to action mappings read by the operation branch executor. The remainder of the key
-         * is a branch identifier and the value is the identifier of the action that reaches it.
-         */
-        public static final String BRANCH_ACTION_PREFIX = "branch.";
-
-        private ExecutorMetadata() {
-
-        }
-    }
-
-    /**
      * Keys this component reads from and writes to the flow execution context property map.
      * <p>
      * The property map is server-only: the flow execution API writes request inputs into the user input data, never
@@ -174,10 +146,13 @@ public class StepUpFlowConstants {
                 "The operation step was reached without any authentication having been performed in this flow"),
         ERROR_CODE_NO_ATTRIBUTE_CONFIGURED("65110",
                 "Error in the flow configuration.",
-                "The operation step declares no attribute that it may write"),
-        ERROR_CODE_NO_ACTION_FOR_BRANCH("65111",
+                "The operation step collects no attribute that it may write"),
+        ERROR_CODE_NO_BRANCH_FOR_ATTRIBUTE("65111",
+                "The requested attribute cannot be changed by this flow.",
+                "No branch of this flow collects, %s"),
+        ERROR_CODE_AMBIGUOUS_BRANCH("65112",
                 "Error in the flow configuration.",
-                "No action is configured for branch, %s");
+                "More than one branch of this flow collects, %s");
 
         private static final String ERROR_PREFIX = "SSO";
         private final String code;

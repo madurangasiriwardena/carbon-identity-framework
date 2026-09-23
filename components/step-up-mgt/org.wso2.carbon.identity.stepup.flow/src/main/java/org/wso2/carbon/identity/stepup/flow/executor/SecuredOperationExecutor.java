@@ -51,9 +51,9 @@ import static org.wso2.carbon.identity.flow.execution.engine.Constants.ExecutorS
 /**
  * Applies the protected update the step it sits on is authored to make.
  * <p>
- * Which attribute that is comes from the node's own configuration. The step sits inside the branch that collects the
- * attribute, so the branch already says which one it is; nothing carries it from an earlier step, and so nothing can
- * change it in between. A value supplied for anything else is ignored rather than written.
+ * Which attribute that is comes from the page the step itself presents: a field's identifier is the claim it
+ * writes. Nothing carries it from an earlier step, and so nothing can change it in between. A value supplied for
+ * anything else is ignored rather than written.
  * <p>
  * Before applying anything it refuses unless the user was actually authenticated in this flow. The flow is authored
  * with the authentication ahead of this step, but a flow authored with the steps in the wrong order, or with none at
@@ -198,17 +198,15 @@ public class SecuredOperationExecutor implements Executor {
     }
 
     /**
-     * The attributes this step is allowed to write, declared on the node itself.
+     * The attributes this step is allowed to write: the claims its own page collects.
      * <p>
-     * Taken from the node rather than from the flow context because the executor sits in the branch that collects
-     * the attribute: the branch already says which attribute it is, so nothing carries it between steps and nothing
-     * can change it on the way.
+     * The form is the declaration. A field's identifier is the claim it writes, chosen when the field is placed,
+     * so there is nothing to restate elsewhere and nothing to carry between steps that could change on the way.
      */
     private Set<String> writableAttributes(FlowExecutionContext context) {
 
-        return new LinkedHashSet<>(StepUpFlowContextUtils.splitValues(
-                StepUpFlowContextUtils.getExecutorMetadata(context,
-                        StepUpFlowConstants.ExecutorMetadata.OPERATION_ATTRIBUTES)));
+        return StepUpFlowContextUtils.getAttributesCollectedBy(context,
+                context.getCurrentNode() == null ? null : context.getCurrentNode().getId());
     }
 
     /**
