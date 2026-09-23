@@ -23,6 +23,7 @@ import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.wso2.carbon.identity.flow.execution.engine.Constants;
 import org.wso2.carbon.identity.flow.execution.engine.graph.Executor;
+import org.wso2.carbon.identity.flow.execution.engine.metadata.FlowExecutorMetadata;
 import org.wso2.carbon.identity.flow.execution.engine.model.ExecutorResponse;
 import org.wso2.carbon.identity.flow.execution.engine.model.FlowExecutionContext;
 import org.wso2.carbon.identity.flow.mgt.Constants.FlowTypes;
@@ -84,6 +85,23 @@ public class SecuredOperationCompletionExecutor implements Executor {
         ExecutorResponse response = new ExecutorResponse(STATUS_EXTERNAL_REDIRECTION);
         response.setAdditionalInfo(additionalInfo);
         return response;
+    }
+
+    /**
+     * Describes this executor to the flow composer.
+     * <p>
+     * Without it the composer has no entry for the executor and falls back to labelling the step
+     * generically, so every execution step in a flow reads the same.
+     *
+     * @return Executor metadata.
+     */
+    @Override
+    public FlowExecutorMetadata getExecutorMetadata() {
+
+        return FlowExecutorMetadata.builder()
+                .displayName("Return to the application")
+                .description("Redirects to the callback the flow was launched with, without issuing a session.")
+                .build();
     }
 
     @Override

@@ -31,8 +31,10 @@ import org.wso2.carbon.identity.core.util.IdentityKeyStoreResolverException;
 import org.wso2.carbon.identity.core.util.IdentityTenantUtil;
 import org.wso2.carbon.identity.core.util.IdentityUtil;
 import org.wso2.carbon.identity.flow.execution.engine.graph.Executor;
+import org.wso2.carbon.identity.flow.execution.engine.metadata.FlowExecutorMetadata;
 import org.wso2.carbon.identity.flow.execution.engine.model.ExecutorResponse;
 import org.wso2.carbon.identity.flow.execution.engine.model.FlowExecutionContext;
+import org.wso2.carbon.identity.flow.mgt.Constants.FlowTypes;
 import org.wso2.carbon.identity.stepup.flow.testing.internal.StepUpFlowTestingDataHolder;
 import org.wso2.carbon.user.api.UserStoreException;
 import org.wso2.carbon.user.core.common.AbstractUserStoreManager;
@@ -44,9 +46,11 @@ import java.time.Instant;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Date;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.wso2.carbon.identity.flow.execution.engine.Constants.ExecutorStatus.STATUS_COMPLETE;
 import static org.wso2.carbon.identity.flow.execution.engine.Constants.ExecutorStatus.STATUS_ERROR;
@@ -315,6 +319,39 @@ public class AccessTokenSeedExecutor implements Executor {
         response.setErrorMessage(message);
         response.setErrorDescription(message);
         return response;
+    }
+
+    /**
+     * Describes this executor to the flow composer.
+     * <p>
+     * Without it the composer has no entry for the executor and falls back to labelling the step
+     * generically, so every execution step in a flow reads the same.
+     *
+     * @return Executor metadata.
+     */
+    @Override
+    public FlowExecutorMetadata getExecutorMetadata() {
+
+        return FlowExecutorMetadata.builder()
+                .displayName("Seed from an access token")
+                .description("Development only. Establishes the subject and prior authentication evidence from a JWT "
+                        + "access token.")
+                .build();
+    }
+
+    /**
+     * The flow types this executor may be placed in.
+     * <p>
+     * Declaring none, which is the default, keeps the executor out of the metadata the composer reads: the
+     * step is then labelled generically, and a flow using it is refused on save as carrying an unsupported
+     * executor.
+     *
+     * @return Supported flow types.
+     */
+    @Override
+    public Set<FlowTypes> getSupportedFlowTypes() {
+
+        return EnumSet.of(FlowTypes.SECURED_SELF_SERVICE_OPERATIONS);
     }
 
     @Override

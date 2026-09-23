@@ -22,6 +22,7 @@ import org.apache.commons.lang.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.wso2.carbon.identity.flow.execution.engine.graph.Executor;
+import org.wso2.carbon.identity.flow.execution.engine.metadata.FlowExecutorMetadata;
 import org.wso2.carbon.identity.flow.execution.engine.model.ExecutorResponse;
 import org.wso2.carbon.identity.flow.execution.engine.model.FlowExecutionContext;
 import org.wso2.carbon.identity.flow.mgt.Constants.FlowTypes;
@@ -101,6 +102,24 @@ public class OperationBranchExecutor implements Executor {
                     + actionId + ".");
         }
         return new ExecutorResponse(STATUS_COMPLETE);
+    }
+
+    /**
+     * Describes this executor to the flow composer.
+     * <p>
+     * Without it the composer has no entry for the executor and falls back to labelling the step
+     * generically, so every execution step in a flow reads the same.
+     *
+     * @return Executor metadata.
+     */
+    @Override
+    public FlowExecutorMetadata getExecutorMetadata() {
+
+        return FlowExecutorMetadata.builder()
+                .displayName("Continue to the chosen operation")
+                .description("Answers the choice that follows from the operation the launching request asked for, so "
+                        + "the user is not asked again.")
+                .build();
     }
 
     @Override

@@ -23,6 +23,7 @@ import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.wso2.carbon.identity.core.util.IdentityTenantUtil;
 import org.wso2.carbon.identity.flow.execution.engine.graph.Executor;
+import org.wso2.carbon.identity.flow.execution.engine.metadata.FlowExecutorMetadata;
 import org.wso2.carbon.identity.flow.execution.engine.model.ExecutorResponse;
 import org.wso2.carbon.identity.flow.execution.engine.model.FlowExecutionContext;
 import org.wso2.carbon.identity.flow.mgt.Constants.FlowTypes;
@@ -243,6 +244,24 @@ public class SecuredOperationExecutor implements Executor {
                     StepUpFlowConstants.ErrorMessages.ERROR_CODE_NO_FACTOR_PERFORMED.getDescription());
         }
         return null;
+    }
+
+    /**
+     * Describes this executor to the flow composer.
+     * <p>
+     * Without it the composer has no entry for the executor and falls back to labelling the step
+     * generically, so every execution step in a flow reads the same.
+     *
+     * @return Executor metadata.
+     */
+    @Override
+    public FlowExecutorMetadata getExecutorMetadata() {
+
+        return FlowExecutorMetadata.builder()
+                .displayName("Update the protected attribute")
+                .description("Applies the attribute this step declares, once the user has been authenticated in this "
+                        + "flow.")
+                .build();
     }
 
     @Override

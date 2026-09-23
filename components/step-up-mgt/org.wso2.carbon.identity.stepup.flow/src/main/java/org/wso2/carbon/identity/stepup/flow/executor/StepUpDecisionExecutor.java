@@ -21,6 +21,7 @@ package org.wso2.carbon.identity.stepup.flow.executor;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.wso2.carbon.identity.flow.execution.engine.graph.Executor;
+import org.wso2.carbon.identity.flow.execution.engine.metadata.FlowExecutorMetadata;
 import org.wso2.carbon.identity.flow.execution.engine.model.ExecutorResponse;
 import org.wso2.carbon.identity.flow.execution.engine.model.FlowExecutionContext;
 import org.wso2.carbon.identity.flow.mgt.Constants.FlowTypes;
@@ -101,6 +102,24 @@ public class StepUpDecisionExecutor implements Executor {
         ExecutorResponse response = new ExecutorResponse(STATUS_COMPLETE);
         response.setContextProperty(properties);
         return response;
+    }
+
+    /**
+     * Describes this executor to the flow composer.
+     * <p>
+     * Without it the composer has no entry for the executor and falls back to labelling the step
+     * generically, so every execution step in a flow reads the same.
+     *
+     * @return Executor metadata.
+     */
+    @Override
+    public FlowExecutorMetadata getExecutorMetadata() {
+
+        return FlowExecutorMetadata.builder()
+                .displayName("Evaluate the step-up policy")
+                .description("Records which factors the tenant policy still requires, given the evidence the flow was "
+                        + "seeded with.")
+                .build();
     }
 
     @Override
