@@ -1,6 +1,11 @@
 # Step-up authentication for self-service operations — status
 
-Working notes for the step-up implementation. Written 2026-09-21, revised 2026-09-22.
+Working notes for the step-up implementation. Written 2026-09-21, revised 2026-09-23.
+
+**The flow runs end to end on a local pack.** A launch carrying an access token authenticates the user
+with an email OTP, collects the new value, writes it through the user store, and returns to the
+application. The Console lists the flow and opens it in a builder. What remains is under *Still open*
+and *Not started* — none of it blocks exercising the flow.
 
 Covers what exists, what was decided and why, what is known to be wrong, and what has not been
 started. Everything here was verified against the code unless it says otherwise.
@@ -29,9 +34,9 @@ protected set takes effect on every path at once.
 | `carbon-identity-framework` | `feat/step-up-decision-component` | Phase 1 |
 | `carbon-identity-framework` | `feat/step-up-flow` (off Phase 1) | Phase 3 + fixes |
 | `carbon-identity-framework` | `dev/step-up-local-testing` (off Phase 3) | PoC tooling, not for merge |
-| `identity-local-auth-emailotp` | `feat/secured-self-service-operations-otp` | 2 commits |
-| `identity-apps` | `feat/secured-self-service-operations-flow` | 4 commits, incl. the Console builder |
-| `identity-api-server` | `feat/secured-self-service-operations-flow-meta` | Phase 6, API half |
+| `identity-local-auth-emailotp` | `feat/secured-self-service-operations-otp` | the OTP flow type case |
+| `identity-apps` | `feat/secured-self-service-operations-flow` | the accounts page and the Console builder |
+| `identity-api-server` | `feat/secured-self-service-operations-flow-meta` | flow meta for this type |
 
 Nothing is pushed. `dev/step-up-local-testing` contains everything and is what the running pack is
 built from.
@@ -225,60 +230,6 @@ calls `setErrorCode` gets an NPE. Worked around in this component by building er
 no-argument constructor. Existing executors avoid it by accident. One line to fix in `flow.mgt`, not
 done to keep the change out of this work.
 
-**The Console cannot render this flow type.** The API half of this is now done; the Console half is
-not.
-
-Two corrections to what was written here before. The OpenAPI enums are `@ApiParam(allowableValues=…)`
-on a plain `String` parameter — Swagger documentation, not runtime validation — so they never rejected
-anything. The 500 came from one place only: `ServerFlowMgtService.resolveHandler` throwing
-`IllegalStateException` for a type with no meta handler. And the flow's own executors did not need
-listing anywhere: `Utils.getSupportedExtensionExecutors(flowType)` resolves them from the engine by
-`Executor.getSupportedFlowTypes()`, which all five already declare.
-
-A fourth flow builder package now exists: `admin.secured-self-service-flow-builder.v1`, 18 files and
-about 1,000 lines against the 53-57 files and 5-6k lines of the three before it. Almost all of that
-difference is things this flow does not need. It contributes no element of its own, so it uses
-`CommonElementFactory`, the core `ResourceProperties` and the core palette rather than wrapping them;
-and it ships no AI generation, no migrations and no resource JSON. What it does carry is the edge
-building, the transform on save, the provider and the page.
-
-It has been syntax checked but not compiled. The workspace lockfile here was written by pnpm 10.33.0
-and the installed pnpm is 11.13.1, which wants to purge `node_modules` before it will install, so no
-package in this checkout currently has its dependencies linked and there is no type-check to run.
-
-**Branching survives the Console, which was the risk worth checking first.** All three existing
-builders are linear and this flow is a 13-step graph with two fan-outs, so the concern was that the
-canvas would flatten it. It does not. Four places all turn out to be branch-agnostic:
-
-- **Load.** `createEdgesForButtons` is called for every button on a step, so a step with several
-  buttons gets several outgoing edges.
-- **Save.** `transformFlow` keys its navigation map by `sourceHandle`, which is a *resource* id, and
-  applies it to components recursively — not once per step.
-- **Wire format.** Executor configuration round-trips as arbitrary string key/values, renamed
-  `metadata` → `meta` on the way out and back in `Utils.convertToExecutorDTO`. Unknown fields on
-  `step.data` are spread through untouched.
-- **Server validation.** `validateNodeConnectivity` only requires a non-blank `next` on each action.
-  It assumes nothing about arity.
-
-Replaying the load and save transformations over the shipped definition gives 14 edges across 13
-steps, both fan-outs (`operation_choice`, `collection_choice`) and both convergence points
-(`step_up_decision`, `operation_completion`) intact, every navigation preserved, and the branch
-metadata on all four routing nodes preserved. That is a replay of the logic rather than the code
-itself, so it is strong evidence and not a passing test.
-
-Two further things that make this cheaper than it looked. `validateFlowType` checks against
-`Constants.FlowTypes.values()`, so there is no separate list of types to keep in step — the Swagger
-`allowableValues` are documentation and enforce nothing. And `FlowMgtService.getFlow` falls back to
-`SystemDefaultFlowProvider`, so `GET /flow` returns the shipped definition for a tenant that has never
-saved one: the Console has something real to render from the first load.
-
-What remains is the package itself, and almost none of its bulk is about branching — it is AI
-generation, extended property panels, migrations, and the `steps.json`/`elements.json`/`widgets.json`
-palette. A lean fourth package can drop the first three. The one real gap is that executor metadata
-round-trips but has no editor, so the Console could rearrange this flow but not author a new branch
-until a small property panel is added for it, in the way `federation-properties.tsx` edits
-`meta.idp`.
-
 **`requiredParams` filters nothing, and an earlier note here said it did.** The superset-form design
 recorded for Phase 4 — one form covering every protected attribute, an executor naming the seeded
 subset in `requiredParams`, the renderer filtering on it — assumed a client-side filter that does not
@@ -358,6 +309,41 @@ Unrelated find, worth reporting separately: the Console declares `StepTypes.Rule
 | Default flow definition used `config`, `name` and non-submit buttons | flow definition | `configs`, `identifier`, `"type": "submit"` — see below |
 | `SecuredOperationExecutor` read the submitted value from `getUserInputData()` | `stepup.flow` | reads the flow user's updated claims |
 | The seed defaulted the operation to the mobile claim, so the choice page could never be reached and any other branch conflicted with it | `stepup.flow.testing` | the seed records the branch the request named, and records nothing when it named none |
+| Every execution step in the editor read "Execution": `ExecutionFactory` names a contributed executor only when the flow metadata describes it, and none of these described itself | `stepup.flow`, `stepup.flow.testing` | `getExecutorMetadata` on each |
+| `AccessTokenSeedExecutor` declared no supported flow types, unlike its sibling in the same bundle. The default is none, which keeps an executor out of the metadata entirely — so the step could not be named, and a flow using it would have been refused on save | `stepup.flow.testing` | flow type declared |
+| The composer logged a failure to read metadata from every executor and fell back to derived defaults: `FlowExecutorMetadata` lives in the engine's metadata package, which neither bundle imported, so the class threw where the engine called for it. The engine catches `LinkageError` there, which is why it degraded instead of failing to start | both poms | package imported |
+| Clicking the gear on a step hung the page. The shared panel destructures `ResourceProperties` from the builder context and renders that, shadowing its own name; the package supplied the shared panel as that context value, so it rendered itself without end | `admin.secured-self-service-flow-builder.v1` | its own panel, delegating to the shared per-kind factories |
+| The flow definition carried no coordinates, so every step deserialised at the origin and the editor drew all of them on top of each other | flow definition | `coordinateX`/`Y`, `width`, `height` per step |
+| The canvas regenerated every node, walked every component and re-laid the edges on each render, and again on every window focus | `admin.secured-self-service-flow-builder.v1` | resources, node types and handlers memoised; the rebuild keyed on the flow rather than on `isValidating` |
+| `OperationBranchExecutorTest` was never listed in `testng.xml`, so the branch executor was untested | `stepup.flow` | registered |
+
+**The Console renders and edits this flow.** The API half needed a meta handler and a case in
+`ServerFlowMgtService.resolveHandler`, which threw `IllegalStateException` for a type without one — the
+sole cause of the 500 from `GET /flow/meta`. Two things turned out not to be needed: the OpenAPI enums
+are `@ApiParam(allowableValues=…)` on a plain `String`, so Swagger documentation that never rejected
+anything; and the flow's executors needed listing nowhere, because
+`Utils.getSupportedExtensionExecutors(flowType)` resolves them from the engine by
+`Executor.getSupportedFlowTypes()`.
+
+The Console half is `admin.secured-self-service-flow-builder.v1` — 18 files, about 1,000 lines, against
+the 53-57 files and 5-6k lines of the three builders before it. It contributes no element of its own, so
+it uses the shared element factory and the core palette, and ships no AI generation, no migrations and
+no resource JSON. Only the property panel had to be its own, and the reason is worth keeping: the shared
+panel renders whatever component the builder context supplies under that name, so supplying the shared
+panel itself makes it render itself.
+
+Branching survives the round trip, which was the risk worth checking before writing any of it. Four
+places are branch-agnostic: `createEdgesForButtons` runs for every button on a step; `transformFlow`
+keys its navigation map by resource id and applies it recursively; executor configuration round-trips
+as arbitrary string key/values; and `validateNodeConnectivity` only requires a non-blank `next`.
+Replaying the load and save transformations over the shipped definition preserved every navigation,
+both fan-outs and the branch metadata — and the flow has since been opened and edited in the running
+Console.
+
+`FlowMgtService.getFlow` falls back to `SystemDefaultFlowProvider`, so the canvas has the shipped
+definition to render before anyone saves. Note what saving means: `deleteFlow` returns silently in a
+root organization, so a flow saved from the editor in super tenant cannot be removed through the API —
+only by clearing the `IDN_FLOW` row, whose children all cascade.
 
 **The component shape trap is worth repeating.** A system default flow file deserialises straight into
 `ComponentDTO`, whose field is `configs`. The execution API renames it to `config` on the way out, so
@@ -450,10 +436,15 @@ decision is taken at seed time.
 See the PoC harness and the flow definition under
 `org.wso2.carbon.identity.stepup.flow.testing/testing/`.
 
-Deploy: the two step-up bundles, the two changed `flow-orchestration-framework` bundles, the testing
-bundle, and `org.wso2.carbon.identity.local.auth.emailotp`. Copy the flow definition to
-`<IS_HOME>/repository/conf/flow-defaults/` and `execution-flow.jsp` to the deployed `accounts` webapp.
-Start with `-DStepUp.AllowUnverifiedSeed=true`.
+Deploy to `dropins`: the two step-up bundles and the testing bundle, plus the two changed
+`flow-orchestration-framework` bundles and `org.wso2.carbon.identity.local.auth.emailotp`. Copy the flow
+definition to `<IS_HOME>/repository/conf/flow-defaults/` and `execution-flow.jsp` to the deployed
+`accounts` webapp. For the Console, build `identity-apps` and copy `apps/console/build/console` over the
+deployed webapp — clearing its `static/js` first, because the copy is additive and old content-hashed
+chunks otherwise accumulate. Start the server with `-DStepUp.AllowUnverifiedSeed=true`.
+
+The flow definition is read once and cached by `SystemDefaultFlowProvider`, so changing it needs a
+restart even before anyone saves from the editor.
 
 Enable the flow, remembering that `PATCH /flow/config` needs `"flowCompletionConfigs":{}` until the
 `FlowConfigDTO` fix is deployed. Create the `STEP_UP_POLICY` resource type before the resource;
