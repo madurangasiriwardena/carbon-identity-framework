@@ -31,7 +31,6 @@ public class StepUpFlowConstants {
     public static final String OPERATION_BRANCH_EXECUTOR = "OperationBranchExecutor";
     public static final String STEP_UP_DECISION_EXECUTOR = "StepUpDecisionExecutor";
     public static final String SECURED_OPERATION_EXECUTOR = "SecuredOperationExecutor";
-    public static final String SECURED_OPERATION_COMPLETION_EXECUTOR = "SecuredOperationCompletionExecutor";
 
     /**
      * Separator of the multi valued context properties written by this component.
@@ -101,12 +100,6 @@ public class StepUpFlowConstants {
          */
         public static final String DECISION_EVALUATED = PREFIX + "decisionEvaluated";
 
-        /**
-         * Callback the flow may terminate on, already validated against the launching application's registered
-         * URIs when the flow was seeded. Absent means there is no callback this flow is allowed to redirect to.
-         */
-        public static final String VALIDATED_CALLBACK_URL = PREFIX + "validatedCallbackUrl";
-
         private ContextProperties() {
 
         }
@@ -135,9 +128,6 @@ public class StepUpFlowConstants {
         ERROR_CODE_APPLYING_OPERATION("65106",
                 "Error while applying the update.",
                 "Unexpected error while applying the update for user in tenant, %s"),
-        ERROR_CODE_NO_VALIDATED_CALLBACK("65107",
-                "No validated callback available.",
-                "The flow carries no callback that was validated against the launching application"),
         ERROR_CODE_NOTHING_TO_APPLY("65108",
                 "No attribute value was provided.",
                 "None of the attributes this flow was seeded for carry a new value"),

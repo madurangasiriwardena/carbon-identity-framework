@@ -191,7 +191,7 @@
                 "variant": "PRIMARY",
                 "action": {
                   "type": "EXECUTOR",
-                  "nextId": "operation_completion",
+                  "nextId": "END",
                   "executor": {
                     "name": "SecuredOperationExecutor"
                   }
@@ -249,7 +249,7 @@
                 "variant": "PRIMARY",
                 "action": {
                   "type": "EXECUTOR",
-                  "nextId": "operation_completion",
+                  "nextId": "END",
                   "executor": {
                     "name": "SecuredOperationExecutor"
                   }
@@ -265,26 +265,9 @@
       }
     },
     {
-      "id": "operation_completion",
-      "type": "EXECUTION",
-      "coordinateX": 1955.0,
-      "coordinateY": 450.0,
-      "width": 205.0,
-      "height": 99.0,
-      "data": {
-        "action": {
-          "type": "EXECUTOR",
-          "executor": {
-            "name": "SecuredOperationCompletionExecutor"
-          },
-          "nextId": "END"
-        }
-      }
-    },
-    {
       "id": "END",
       "type": "END",
-      "coordinateX": 2260.0,
+      "coordinateX": 1955.0,
       "coordinateY": 345.0,
       "width": 350.0,
       "height": 310.0,

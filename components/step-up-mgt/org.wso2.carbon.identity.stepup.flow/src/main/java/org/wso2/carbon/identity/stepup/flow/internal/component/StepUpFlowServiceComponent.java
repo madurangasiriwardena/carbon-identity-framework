@@ -30,7 +30,6 @@ import org.osgi.service.component.annotations.ReferenceCardinality;
 import org.osgi.service.component.annotations.ReferencePolicy;
 import org.wso2.carbon.identity.flow.execution.engine.graph.Executor;
 import org.wso2.carbon.identity.stepup.flow.executor.OperationBranchExecutor;
-import org.wso2.carbon.identity.stepup.flow.executor.SecuredOperationCompletionExecutor;
 import org.wso2.carbon.identity.stepup.flow.executor.SecuredOperationExecutor;
 import org.wso2.carbon.identity.stepup.flow.executor.StepUpDecisionExecutor;
 import org.wso2.carbon.identity.stepup.mgt.api.service.StepUpDecisionService;
@@ -55,7 +54,6 @@ public class StepUpFlowServiceComponent {
             bundleContext.registerService(Executor.class.getName(), new OperationBranchExecutor(), null);
             bundleContext.registerService(Executor.class.getName(), new StepUpDecisionExecutor(), null);
             bundleContext.registerService(Executor.class.getName(), new SecuredOperationExecutor(), null);
-            bundleContext.registerService(Executor.class.getName(), new SecuredOperationCompletionExecutor(), null);
             LOG.debug("Step-Up Flow Service Component bundle activated successfully.");
         } catch (Throwable e) {
             LOG.error("Error occurred while activating StepUpFlowServiceComponent.", e);

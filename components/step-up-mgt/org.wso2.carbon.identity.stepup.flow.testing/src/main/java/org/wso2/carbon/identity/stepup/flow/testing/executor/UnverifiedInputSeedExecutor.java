@@ -65,7 +65,6 @@ public class UnverifiedInputSeedExecutor implements Executor {
     private static final String INPUT_USERNAME = "username";
     private static final String INPUT_OPERATION_TYPE = "operationType";
     private static final String INPUT_OPERATION_ATTRIBUTES = "operationAttributes";
-    private static final String INPUT_CALLBACK_URL = "callbackUrl";
     private static final String INPUT_INHERITED_ACR = "inheritedAcr";
     private static final String INPUT_INHERITED_FACTORS = "inheritedFactors";
     private static final String INPUT_INHERITED_AUTH_TIME = "inheritedAuthTime";
@@ -111,8 +110,6 @@ public class UnverifiedInputSeedExecutor implements Executor {
         Map<String, Object> properties = new HashMap<>();
         properties.put("stepUp.operationType", defaulted(inputs.get(INPUT_OPERATION_TYPE), "UPDATE_PROFILE"));
         properties.put("stepUp.operationAttributes", defaulted(inputs.get(INPUT_OPERATION_ATTRIBUTES), EMAIL_CLAIM));
-        properties.put("stepUp.validatedCallbackUrl",
-                defaulted(inputs.get(INPUT_CALLBACK_URL), "https://localhost:9443/myaccount"));
         putIfPresent(properties, "stepUp.inheritedAcr", inputs.get(INPUT_INHERITED_ACR));
         putIfPresent(properties, "stepUp.inheritedFactors", inputs.get(INPUT_INHERITED_FACTORS));
         putIfPresent(properties, "stepUp.inheritedAuthTime", inputs.get(INPUT_INHERITED_AUTH_TIME));
@@ -195,7 +192,7 @@ public class UnverifiedInputSeedExecutor implements Executor {
     @Override
     public List<String> getInitiationData() {
 
-        return Arrays.asList(INPUT_USERNAME, INPUT_OPERATION_TYPE, INPUT_OPERATION_ATTRIBUTES, INPUT_CALLBACK_URL);
+        return Arrays.asList(INPUT_USERNAME, INPUT_OPERATION_TYPE, INPUT_OPERATION_ATTRIBUTES);
     }
 
     @Override

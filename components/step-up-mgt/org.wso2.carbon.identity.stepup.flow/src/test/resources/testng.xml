@@ -29,7 +29,6 @@
             <class name="org.wso2.carbon.identity.stepup.flow.executor.OperationBranchExecutorTest"/>
             <class name="org.wso2.carbon.identity.stepup.flow.executor.StepUpDecisionExecutorTest"/>
             <class name="org.wso2.carbon.identity.stepup.flow.executor.SecuredOperationExecutorTest"/>
-            <class name="org.wso2.carbon.identity.stepup.flow.executor.SecuredOperationCompletionExecutorTest"/>
         </classes>
     </test>
 </suite>

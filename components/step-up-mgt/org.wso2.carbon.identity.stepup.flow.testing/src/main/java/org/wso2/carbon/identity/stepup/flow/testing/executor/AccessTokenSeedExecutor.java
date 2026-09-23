@@ -86,7 +86,6 @@ public class AccessTokenSeedExecutor implements Executor {
     private static final String INPUT_LAUNCH_TOKEN = "launchToken";
     private static final String INPUT_ACCESS_TOKEN = "accessToken";
     private static final String INPUT_OPERATION = "operation";
-    private static final String INPUT_CALLBACK_URL = "callbackUrl";
 
     private static final String CLAIM_ACR = "acr";
     private static final String CLAIM_AMR = "amr";
@@ -166,8 +165,6 @@ public class AccessTokenSeedExecutor implements Executor {
         if (branch != null) {
             properties.put("stepUp.operationBranch", branch);
         }
-        properties.put("stepUp.validatedCallbackUrl",
-                defaulted(inputs.get(INPUT_CALLBACK_URL), "https://localhost:9443/myaccount"));
         carryPriorEvidence(claims, properties);
 
         LOG.info("Seeded flow " + context.getContextIdentifier() + " from an access token issued to client: "
@@ -306,11 +303,6 @@ public class AccessTokenSeedExecutor implements Executor {
         return Boolean.parseBoolean(IdentityUtil.getProperty(ENABLED_PROPERTY));
     }
 
-    private static String defaulted(String value, String fallback) {
-
-        return StringUtils.isBlank(value) ? fallback : value.trim();
-    }
-
     private static ExecutorResponse error(String message) {
 
         ExecutorResponse response = new ExecutorResponse();
@@ -357,7 +349,7 @@ public class AccessTokenSeedExecutor implements Executor {
     @Override
     public List<String> getInitiationData() {
 
-        return Arrays.asList(INPUT_LAUNCH_TOKEN, INPUT_ACCESS_TOKEN, INPUT_OPERATION, INPUT_CALLBACK_URL);
+        return Arrays.asList(INPUT_LAUNCH_TOKEN, INPUT_ACCESS_TOKEN, INPUT_OPERATION);
     }
 
     @Override

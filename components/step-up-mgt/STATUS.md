@@ -58,9 +58,8 @@ in `flow.mgt` and its arm in `FlowExecutionService.enterFlowInIdentityContext`.
 - `SecuredOperationExecutor` — writes only the attribute its own node declares, and refuses unless the
   user was authenticated in this flow
 - `StepUpDecisionExecutor` — retained but no longer in the default flow; see the decision below
-- `SecuredOperationCompletionExecutor` — redirects only to a callback carried on the context
 - Default flow definition shipped to `<carbon conf>/flow-defaults/SECURED_SELF_SERVICE_OPERATIONS.json`
-- 33 tests
+- 30 tests
 
 ### PoC tooling — `dev/step-up-local-testing` only
 
@@ -160,6 +159,27 @@ offer.
 This leaves the launch token carrying four things and nothing else: `sub`, `client_id` for the callback
 derivation, `acr`/`amr`/`auth_time` for the skip conditions, and single use with a short expiry.
 
+**The flow ends at its END node, and the destination comes from the application.** There is no completion
+executor. The engine's own END handling sets `flowStatus` to `COMPLETE`, `stepType` to `REDIRECTION`, and
+the URL from `FlowExecutionEngineUtils.resolveCompletionRedirectionUrl` — the launching application's
+registered access URL, falling back to My Account.
+
+The executor that used to sit there existed for one reason: to redirect to a callback the launching
+request supplied. It cost two things. `EXTERNAL_REDIRECTION` maps to `STATUS_INCOMPLETE`
+(`TaskExecutionNode:173`), so the flow never reached END, `flowStatus` was never `COMPLETE`, and
+`FlowExecutionService` never called `removeFlowContextFromCache` — the context leaked until its TTL. And
+the callback arrived in the request, which made validating it against the application's registered URIs
+a piece of outstanding work.
+
+Taking the destination from application configuration settles both: the context is torn down, and the
+URL can no longer be chosen by a caller, so there is nothing left to validate. What is lost is a
+per-launch destination — every launch now ends at the same place, with no result state.
+
+Restoring that later should not restore the executor. The engine's END step resolves the URL itself and
+never consults the context, so the right change is to let a completion URL set on the context take
+precedence there. The seeding step could then establish the callback at the same moment, and by the same
+code, that validates it against the application's registered URIs — and the flow would still end at END.
+
 **The flow reads no tenant configuration at runtime.** The operation comes from the launch request, the
 attribute from the node, the factor from the step. What remains outside the flow is one thing: which
 attributes SCIM2 must refuse.
@@ -192,14 +212,6 @@ SCIM2, so a block in the SCIM2 layer needs no exemption for the flow.
 ## 4. Problems found
 
 ### Still open
-
-**The flow context is not torn down on completion.** `SecuredOperationCompletionExecutor` returns
-`EXTERNAL_REDIRECTION`, which the engine maps to `flowStatus: INCOMPLETE`, so the flow never reaches
-its `END` node and `FlowExecutionService` never calls `removeFlowContextFromCache`. The context expires
-by TTL instead. Returning `COMPLETE` would tear down correctly but hands the redirect to
-`resolveCompletionRedirectionUrl`, which uses the application's registered access URL rather than a
-per-launch callback with result state. Getting both needs the engine to honour an executor-supplied
-URL on the `END` step.
 
 **Stepping up with email OTP marks the email verified.** `EmailOTPExecutor` adds
 `verifiedEmailAddresses` and `identity/emailVerified` as updated claims after a successful OTP, which
@@ -335,33 +347,6 @@ reach decides whether step-up can use the feature at all.
 Unrelated find, worth reporting separately: the Console declares `StepTypes.Rule = "RULE"` and ships a
 `resources/steps/rule` component, which the server would reject on save.
 
-**The callback must be derived from the application that started the flow, not supplied with it.**
-Today the callback arrives as a `callback_url` query parameter, is carried into the flow as
-`stepUp.validatedCallbackUrl`, and is redirected to unchanged. `SecuredOperationCompletionExecutor`
-refuses when the property is absent, but it cannot tell a value the server established from one a
-caller invented, so the name of that property currently overstates what has happened to it.
-
-The requirement is that the flow resolves the callback from the launching application itself — its
-registered redirect URIs — and accepts a requested value only when it matches one of them. A redirect
-out of a context that has just completed an authentication, to a location the caller chose, is an open
-redirect, and it is worth more here than usual because the ceremony that precedes it is what convinces
-the user the destination is trustworthy.
-
-This belongs in the seeding step, which is also where the launching application becomes known: the
-launch token carries `client_id` for exactly this reason. That executor ships in
-`identity-oauth2-grant-token-exchange`, which can see the OAuth application configuration and so can
-resolve the registered URIs; the framework cannot. The engine's own completion path already does
-something of this shape — `FlowExecutionEngineUtils.resolveCompletionRedirectionUrl` uses the
-application's registered access URL — but it takes no per-launch value, so it is a precedent rather
-than a mechanism to reuse.
-
-The `callback_url` parameter and the seed executor's default are PoC scaffolding and must not survive
-into the real seeding step.
-
-**The PoC seed trusts its input.** An access token is not a launch token: not single use, not
-restricted to the self-care application, carrying no operation scope, and carrying no `acr` or
-`auth_time`. All of this is what Phase 2 closes.
-
 ### Fixed during this work
 
 | Problem | Where | Fix |
@@ -478,8 +463,8 @@ path is not being exercised.
 ```
 https://localhost:9443/accounts/execution-flow.jsp
   ?flowType=SECURED_SELF_SERVICE_OPERATIONS&spId=<appId>
-  &launch_token=<jwt>&callback_url=<where to land>
-  &operation=mobile
+  &launch_token=<jwt>
+  &operation=<claim URI, URL encoded>
 ```
 
 `operation` names the claim to change — `http://wso2.org/claims/mobile` or

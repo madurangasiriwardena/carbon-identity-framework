@@ -59,7 +59,6 @@ import static org.wso2.carbon.identity.stepup.flow.constant.StepUpFlowConstants.
 import static org.wso2.carbon.identity.stepup.flow.constant.StepUpFlowConstants.ContextProperties.OPERATION_BRANCH;
 import static org.wso2.carbon.identity.stepup.flow.constant.StepUpFlowConstants.ContextProperties.OPERATION_TYPE;
 import static org.wso2.carbon.identity.stepup.flow.constant.StepUpFlowConstants.ContextProperties.OUTSTANDING_FACTORS;
-import static org.wso2.carbon.identity.stepup.flow.constant.StepUpFlowConstants.ContextProperties.VALIDATED_CALLBACK_URL;
 import static org.wso2.carbon.identity.stepup.flow.constant.StepUpFlowConstants.VALUE_SEPARATOR;
 
 /**
@@ -214,17 +213,6 @@ public class StepUpFlowContextUtils {
     public static List<String> getOutstandingFactors(FlowExecutionContext context) {
 
         return readList(context, OUTSTANDING_FACTORS);
-    }
-
-    /**
-     * The callback this flow is allowed to terminate on.
-     *
-     * @param context Flow execution context.
-     * @return The validated callback, or null when the flow carries none.
-     */
-    public static String getValidatedCallbackUrl(FlowExecutionContext context) {
-
-        return readString(context, VALIDATED_CALLBACK_URL);
     }
 
     /**
