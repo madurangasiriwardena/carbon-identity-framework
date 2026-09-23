@@ -249,6 +249,18 @@ factor required for a weakly protected attribute and then steer into the branch 
 a stronger factor — the decision and the write are on opposite sides of the second fan-out, and only
 the recorded operation ties them together.
 
+**The editor shows two pages that ask which attribute to change, and only one of them is ever seen.**
+The flow fans out twice because the decision and the OTP are shared and sit between the two fan-outs.
+The second fan-out is reached with the branch already chosen, so `OperationBranchExecutor` answers it
+and the page never renders; it exists as a page only because the engine derives a decision node from a
+step with several actions. On the canvas both are ordinary steps, and giving them the same wording
+made the flow look as though it asks twice, so the second now reads "Continue to update your details".
+
+The alternative is to put the decision and the OTP inside each branch, which leaves one choice page and
+no routing step, at the cost of duplicating those two per attribute. At two attributes it is slightly
+smaller and reads better; at four it is twelve extra nodes. Worth revisiting if the editor view matters
+more than the node count.
+
 **The callback must be derived from the application that started the flow, not supplied with it.**
 Today the callback arrives as a `callback_url` query parameter, is carried into the flow as
 `stepUp.validatedCallbackUrl`, and is redirected to unchanged. `SecuredOperationCompletionExecutor`
