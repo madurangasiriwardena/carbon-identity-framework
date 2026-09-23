@@ -54,16 +54,13 @@ OSGi, `org.wso2.carbon.context` and `configuration.mgt.core`.
 `components/step-up-mgt/org.wso2.carbon.identity.stepup.flow`, plus `FlowTypes.SECURED_SELF_SERVICE_OPERATIONS`
 in `flow.mgt` and its arm in `FlowExecutionService.enterFlowInIdentityContext`.
 
-- `OperationSelectionExecutor` — one per branch; fixes which operation the flow performs and refuses
-  a branch that disagrees with what the flow was seeded for
-- `OperationBranchExecutor` — answers a later fan-out from the branch already chosen, so the user is
-  asked once
-- `StepUpDecisionExecutor` — evaluates once, after the operation is known, against seeded evidence only
-- `SecuredOperationExecutor` — refuses if the decision never ran or a required factor was not
-  performed; writes only the seeded attributes
+- `OperationBranchExecutor` — answers the operation choice when the launching request already named it
+- `SecuredOperationExecutor` — writes only the attribute its own node declares, and refuses unless the
+  user was authenticated in this flow
+- `StepUpDecisionExecutor` — retained but no longer in the default flow; see the decision below
 - `SecuredOperationCompletionExecutor` — redirects only to a callback carried on the context
 - Default flow definition shipped to `<carbon conf>/flow-defaults/SECURED_SELF_SERVICE_OPERATIONS.json`
-- 34 tests
+- 28 tests
 
 ### PoC tooling — `dev/step-up-local-testing` only
 
@@ -110,32 +107,71 @@ and a branch per attribute need no engine change. The alternative considered —
 the executor naming the seeded subset in `requiredParams` and the renderer filtering on it — has no
 mechanism behind it; see the correction under *Problems found*.
 
-The shape is: seed → router → choice → per-branch selection → decision → step-up → router → collection
-branch → completion. It fans out twice because the decision and the OTP are shared and sit between the
-two fan-outs. Only the first fan-out is ever a question for the user; `UserChoiceDecisionNode` completes
-without rendering when an action has already been chosen, so `OperationBranchExecutor` answers the
-second from what the first recorded, and answers the first too when the launching request named a
-branch.
+**The authentication is part of the flow's shape, not a decision taken before it.** A factor is placed
+above the fan-out when every branch requires it, and inside a branch when only that branch does. For the
+current requirement — one email OTP for every protected attribute — everything hoists and the flow is
+eight steps:
 
-**The launch token does not name the operation. The request does.** The argument that settled it: today
-any application holding an access token can already `PATCH /scim2/Me` and change any attribute the user
-may change, with no configuration on the IS side. Scoping the operation into the token would protect
-something that is not protected now. Phase 5 does not change that either — once SCIM2 starts refusing,
-the launch token becomes the only route, but it is still the same user changing their own attributes,
-and they may legitimately ask for any operation. The gate is the step-up, not the scope.
+```
+seed → step_up_otp → operation_router → operation_choice ─┬─ mobile_collection ─┐
+                                                          └─ email_collection ──┴→ completion → END
+```
+
+One fan-out, no duplicated authentication, nothing shown twice. The router must sit immediately before
+the choice: the action it sets does not survive a page, because `FlowExecutionService` assigns
+`currentActionId` from the request at the start of every request.
+
+Sharing a factor across branches is safe exactly when every branch requires it — there is then nothing
+to borrow. The moment one attribute needs something stronger, that factor moves into its branch, which
+is adding a node to a branch that already exists rather than reshaping the flow.
+
+**Which attribute a step may write is declared on the step.** `SecuredOperationExecutor` reads
+`operationAttributes` from its own node configuration. The executor sits in the branch that collects the
+attribute, so the branch already says which one it is: nothing carries it between steps, and nothing can
+change it in between. This replaced a seeded operation on the flow context, and with it the executor
+that recorded the operation per branch.
+
+**The request names the branch, not the attribute, and not the token.** Today any application holding an
+access token can already `PATCH /scim2/Me` and change any attribute the user may change, with no
+configuration on the IS side. Scoping the operation into the launch token would protect something that is
+not protected now, and Phase 5 does not change that: once SCIM2 starts refusing, the launch token becomes
+the only route, but it is still the same user changing their own attributes and they may legitimately ask
+for any operation. The gate is the step-up, not the scope.
 
 Tampering with the parameter yields nothing: the subject is bound by the token, so a changed operation
-only ever reaches a different page for the caller's own profile, which they could have asked for
-directly. It is a routing parameter.
-
-What the request names is the **branch**, not the attribute. Which attribute a branch updates is
+only ever reaches a different page for the caller's own profile. Which attribute a branch updates is
 written in the flow definition, so a caller naming a branch cannot name an attribute the flow does not
 offer.
 
 This leaves the launch token carrying four things and nothing else: `sub`, `client_id` for the callback
-derivation, `acr`/`amr`/`auth_time` for the decision, and single use with a short expiry. It removes the
-per-application operation allowlist, the scope-versus-claim question, and all exchange-time operation
-validation from Phase 2.
+derivation, `acr`/`amr`/`auth_time` for the skip conditions, and single use with a short expiry.
+
+**The flow reads no tenant configuration at runtime.** The operation comes from the launch request, the
+attribute from the node, the factor from the step. What remains outside the flow is one thing: which
+attributes SCIM2 must refuse.
+
+```
+STEP_UP_POLICY / step-up-policy
+  protectedAttributes = http://wso2.org/claims/mobile,http://wso2.org/claims/emailaddress
+```
+
+The flow does contain that list — the `operationAttributes` across its nodes — but deriving enforcement
+from it fails open three ways: deleting a branch on a canvas silently unprotects an attribute, a tenant
+that never configured the flow has no protection, and SCIM2 grows a dependency on flow management.
+
+**Enforcement is a refusal, not a challenge.** SCIM2 blocks a protected attribute on the self-service
+path and the attribute can then be changed only through the flow. There is no RFC 9470 challenge carrying
+`acr_values` and `max_age`, because the client's remedy here is to launch the flow rather than to obtain a
+better token — it cannot obtain an arbitrary `acr` on its own. This is a deliberate departure from the
+brief, taken because it is what keeps the configuration above to a single list.
+
+Two things follow. The block belongs on `/scim2/Me`, not on `/scim2/Users/{id}`: refusing administrative
+updates would break user management. And My Account edits the profile through `/scim2/Me`, so its profile
+form will start failing for protected attributes until it is taught to launch the flow instead — that is
+Phase 5 scope, not a detail.
+
+`SecuredOperationExecutor` writes through `AbstractUserStoreManager.setUserClaimValuesWithID`, not through
+SCIM2, so a block in the SCIM2 layer needs no exemption for the flow.
 
 ---
 
@@ -249,17 +285,41 @@ factor required for a weakly protected attribute and then steer into the branch 
 a stronger factor — the decision and the write are on opposite sides of the second fan-out, and only
 the recorded operation ties them together.
 
-**The editor shows two pages that ask which attribute to change, and only one of them is ever seen.**
-The flow fans out twice because the decision and the OTP are shared and sit between the two fan-outs.
-The second fan-out is reached with the branch already chosen, so `OperationBranchExecutor` answers it
-and the page never renders; it exists as a page only because the engine derives a decision node from a
-step with several actions. On the canvas both are ordinary steps, and giving them the same wording
-made the flow look as though it asks twice, so the second now reads "Continue to update your details".
+**Most of Phase 1 is now unused, and the reduction has not been made.** With the authentication
+expressed as the flow's shape and the enforcement reduced to a refusal, the decision component's
+`evaluate` path has no caller. `AuthenticationContextView`, `FactorRequirement`, `RequiredFactor`,
+`StepUpRule`, `StepUpChallengeBuilder` and the whole of `StepUpDecisionServiceImpl.evaluate` — the
+dedupe-by-strictest-maxAge logic and the freshness checks — go with it. What survives is `StepUpPolicy`
+as a list of protected attributes, its provider, the exceptions, and a service answering whether an
+attribute is protected.
 
-The alternative is to put the decision and the OTP inside each branch, which leaves one choice page and
-no routing step, at the cost of duplicating those two per attribute. At two attributes it is slightly
-smaller and reads better; at four it is twelve extra nodes. Worth revisiting if the editor view matters
-more than the node count.
+`StepUpDecisionExecutor` is likewise no longer in the default flow. It is kept for now, and
+`SecuredOperationExecutor` still honours a decision verdict when one has been recorded, so a flow that
+places it explicitly still behaves correctly. Removing it cascades into the bundle's service reference
+and its dependency on `stepup.mgt`, which is why it was left for the Phase 1 reduction rather than done
+here.
+
+The work was not wasted — it is what established that ACR is script-only in this product, which is why
+the flow carries inherited evidence explicitly — but the code mostly goes.
+
+**Skipping a factor needs an engine feature that does not exist yet.** The flow always prompts: someone
+who authenticated ten seconds ago still gets an OTP. Correct and fail-closed, but not yet the point of
+the feature.
+
+`Constants.StepTypes` is `VIEW, REDIRECTION, INTERNAL_PROMPT, EXECUTION, WEBAUTHN, USER_ONBOARD, END`,
+and `GraphBuilder` throws on anything else, so there is no conditional or skippable step. This is
+already scoped as **wso2-enterprise/iam-product-management#634, "Add conditional branching support to
+flow engine"** — open, assigned, a decision node with a condition against runtime data, with designer
+support. When it lands, the skip is one conditional decision in front of `step_up_otp`, which is why
+the seed keeps recording `stepUp.inheritedAcr`, `inheritedFactors` and `inheritedAuthTime` although
+nothing reads them yet.
+
+The requirement worth raising on that issue: its example condition is a business one (`order > $1,000`),
+whereas this needs to read evidence the seeding step put on the flow context. What data a condition can
+reach decides whether step-up can use the feature at all.
+
+Unrelated find, worth reporting separately: the Console declares `StepTypes.Rule = "RULE"` and ships a
+`resources/steps/rule` component, which the server would reject on save.
 
 **The callback must be derived from the application that started the flow, not supplied with it.**
 Today the callback arrives as a `callback_url` query parameter, is carried into the flow as
@@ -408,11 +468,10 @@ https://localhost:9443/accounts/execution-flow.jsp
   &operation=mobile
 ```
 
-`operation` names a branch of the flow — `mobile` or `email` in the shipped definition. Leave it off
-and the flow opens on a page asking which. Either way the OTP step needs two submits: the first with
-the field empty sends the code.
+`operation` names a branch — `mobile` or `email` in the shipped definition. Leave it off and the choice
+page renders after the OTP instead. The OTP step needs two submits: the first with the field empty sends
+the code.
 
-Both the choice page and the collection fan-out are ordinary multi-button VIEW steps. Adding a third
-protected attribute means a button on each, an `OperationSelectionExecutor` node declaring the branch
-and its claim, a `branch.<name>` entry in both `OperationBranchExecutor` nodes, and a collection page
-whose field identifier is that claim.
+Adding a third protected attribute means a button on the choice page, a collection step whose field
+identifier is the claim and whose `SecuredOperationExecutor` node declares the same claim in
+`operationAttributes`, and a `branch.<name>` entry on the router.

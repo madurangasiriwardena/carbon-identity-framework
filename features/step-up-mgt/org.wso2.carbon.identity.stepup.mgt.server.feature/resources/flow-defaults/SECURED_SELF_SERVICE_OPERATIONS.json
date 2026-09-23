@@ -9,8 +9,62 @@
           "executor": {
             "name": "AccessTokenSeedExecutor"
           },
-          "nextId": "operation_router"
+          "nextId": "step_up_otp"
         }
+      }
+    },
+    {
+      "id": "step_up_otp",
+      "type": "VIEW",
+      "data": {
+        "components": [
+          {
+            "id": "step_up_form",
+            "category": "BLOCK",
+            "type": "FORM",
+            "components": [
+              {
+                "id": "step_up_heading",
+                "category": "DISPLAY",
+                "type": "TYPOGRAPHY",
+                "variant": "H5",
+                "configs": {
+                  "text": "Confirm it is you"
+                }
+              },
+              {
+                "id": "step_up_otp_field",
+                "category": "FIELD",
+                "type": "INPUT",
+                "variant": "OTP",
+                "configs": {
+                  "type": "text",
+                  "label": "Verification code",
+                  "required": true,
+                  "placeholder": "Enter the code we sent you",
+                  "identifier": "otp"
+                }
+              },
+              {
+                "id": "step_up_submit",
+                "category": "BUTTON",
+                "type": "BUTTON",
+                "variant": "PRIMARY",
+                "action": {
+                  "type": "EXECUTOR",
+                  "nextId": "operation_router",
+                  "executor": {
+                    "name": "EmailOTPExecutor"
+                  }
+                },
+                "configs": {
+                  "text": "Continue",
+                  "type": "submit"
+                }
+              }
+            ]
+          }
+        ]
       }
     },
     {
@@ -56,178 +110,6 @@
                 "variant": "PRIMARY",
                 "action": {
                   "type": "NEXT",
-                  "nextId": "select_mobile"
-                },
-                "configs": {
-                  "text": "Mobile number",
-                  "type": "submit"
-                }
-              },
-              {
-                "id": "choose_email",
-                "category": "BUTTON",
-                "type": "BUTTON",
-                "variant": "SECONDARY",
-                "action": {
-                  "type": "NEXT",
-                  "nextId": "select_email"
-                },
-                "configs": {
-                  "text": "Email address",
-                  "type": "submit"
-                }
-              }
-            ]
-          }
-        ]
-      }
-    },
-    {
-      "id": "select_mobile",
-      "type": "EXECUTION",
-      "data": {
-        "action": {
-          "type": "EXECUTOR",
-          "executor": {
-            "name": "OperationSelectionExecutor",
-            "metadata": {
-              "branch": "mobile",
-              "operationType": "UPDATE_PROFILE",
-              "operationAttributes": "http://wso2.org/claims/mobile"
-            }
-          },
-          "nextId": "step_up_decision"
-        }
-      }
-    },
-    {
-      "id": "select_email",
-      "type": "EXECUTION",
-      "data": {
-        "action": {
-          "type": "EXECUTOR",
-          "executor": {
-            "name": "OperationSelectionExecutor",
-            "metadata": {
-              "branch": "email",
-              "operationType": "UPDATE_PROFILE",
-              "operationAttributes": "http://wso2.org/claims/emailaddress"
-            }
-          },
-          "nextId": "step_up_decision"
-        }
-      }
-    },
-    {
-      "id": "step_up_decision",
-      "type": "EXECUTION",
-      "data": {
-        "action": {
-          "type": "EXECUTOR",
-          "executor": {
-            "name": "StepUpDecisionExecutor"
-          },
-          "nextId": "step_up_prompt"
-        }
-      }
-    },
-    {
-      "id": "step_up_prompt",
-      "type": "VIEW",
-      "data": {
-        "components": [
-          {
-            "id": "step_up_form",
-            "category": "BLOCK",
-            "type": "FORM",
-            "components": [
-              {
-                "id": "step_up_heading",
-                "category": "DISPLAY",
-                "type": "TYPOGRAPHY",
-                "variant": "H5",
-                "configs": {
-                  "text": "Confirm it is you"
-                }
-              },
-              {
-                "id": "step_up_otp",
-                "category": "FIELD",
-                "type": "INPUT",
-                "variant": "OTP",
-                "configs": {
-                  "type": "text",
-                  "label": "Verification code",
-                  "required": true,
-                  "placeholder": "Enter the code we sent you",
-                  "identifier": "otp"
-                }
-              },
-              {
-                "id": "step_up_submit",
-                "category": "BUTTON",
-                "type": "BUTTON",
-                "variant": "PRIMARY",
-                "action": {
-                  "type": "EXECUTOR",
-                  "executor": {
-                    "name": "EmailOTPExecutor"
-                  },
-                  "nextId": "collection_router"
-                },
-                "configs": {
-                  "text": "Continue",
-                  "type": "submit"
-                }
-              }
-            ]
-          }
-        ]
-      }
-    },
-    {
-      "id": "collection_router",
-      "type": "EXECUTION",
-      "data": {
-        "action": {
-          "type": "EXECUTOR",
-          "executor": {
-            "name": "OperationBranchExecutor",
-            "metadata": {
-              "branch.mobile": "collect_mobile",
-              "branch.email": "collect_email"
-            }
-          },
-          "nextId": "collection_choice"
-        }
-      }
-    },
-    {
-      "id": "collection_choice",
-      "type": "VIEW",
-      "data": {
-        "components": [
-          {
-            "id": "collection_choice_form",
-            "category": "BLOCK",
-            "type": "FORM",
-            "components": [
-              {
-                "id": "collection_choice_heading",
-                "category": "DISPLAY",
-                "type": "TYPOGRAPHY",
-                "variant": "H5",
-                "configs": {
-                  "text": "Continue to update your details"
-                }
-              },
-              {
-                "id": "collect_mobile",
-                "category": "BUTTON",
-                "type": "BUTTON",
-                "variant": "PRIMARY",
-                "action": {
-                  "type": "NEXT",
                   "nextId": "mobile_collection"
                 },
                 "configs": {
@@ -236,7 +118,7 @@
                 }
               },
               {
-                "id": "collect_email",
+                "id": "choose_email",
                 "category": "BUTTON",
                 "type": "BUTTON",
                 "variant": "SECONDARY",
@@ -293,10 +175,13 @@
                 "variant": "PRIMARY",
                 "action": {
                   "type": "EXECUTOR",
+                  "nextId": "operation_completion",
                   "executor": {
-                    "name": "SecuredOperationExecutor"
-                  },
-                  "nextId": "operation_completion"
+                    "name": "SecuredOperationExecutor",
+                    "metadata": {
+                      "operationAttributes": "http://wso2.org/claims/mobile"
+                    }
+                  }
                 },
                 "configs": {
                   "text": "Save",
@@ -347,10 +232,13 @@
                 "variant": "PRIMARY",
                 "action": {
                   "type": "EXECUTOR",
+                  "nextId": "operation_completion",
                   "executor": {
-                    "name": "SecuredOperationExecutor"
-                  },
-                  "nextId": "operation_completion"
+                    "name": "SecuredOperationExecutor",
+                    "metadata": {
+                      "operationAttributes": "http://wso2.org/claims/emailaddress"
+                    }
+                  }
                 },
                 "configs": {
                   "text": "Save",

@@ -48,15 +48,15 @@ import static org.wso2.carbon.identity.flow.execution.engine.Constants.ExecutorS
 import static org.wso2.carbon.identity.flow.execution.engine.Constants.ExecutorStatus.STATUS_USER_INPUT_REQUIRED;
 
 /**
- * Applies the protected update this flow was seeded for.
+ * Applies the protected update the step it sits on is authored to make.
  * <p>
- * Before applying anything it re-checks the seed-time decision against the factors actually performed in this flow,
- * and refuses to run if any required factor is still outstanding. The check is deliberately made here rather than
- * relying on the flow definition placing the step-up ahead of this step: a flow authored with the steps in the wrong
- * order must fail closed, not apply the update.
+ * Which attribute that is comes from the node's own configuration. The step sits inside the branch that collects the
+ * attribute, so the branch already says which one it is; nothing carries it from an earlier step, and so nothing can
+ * change it in between. A value supplied for anything else is ignored rather than written.
  * <p>
- * Only the attributes the flow was seeded for are applied. A value supplied for anything else is ignored rather than
- * written, so a caller cannot widen the operation beyond what was evaluated.
+ * Before applying anything it refuses unless the user was actually authenticated in this flow. The flow is authored
+ * with the authentication ahead of this step, but a flow authored with the steps in the wrong order, or with none at
+ * all, must fail closed rather than write.
  */
 public class SecuredOperationExecutor implements Executor {
 
@@ -71,20 +71,9 @@ public class SecuredOperationExecutor implements Executor {
     @Override
     public ExecutorResponse execute(FlowExecutionContext context) {
 
-        if (!StepUpFlowContextUtils.isDecisionEvaluated(context)) {
-            // Never evaluated is not the same as evaluated and found to require nothing.
-            return errorResponse(STATUS_ERROR, StepUpFlowConstants.ErrorMessages.ERROR_CODE_DECISION_NOT_EVALUATED,
-                    StepUpFlowConstants.ErrorMessages.ERROR_CODE_DECISION_NOT_EVALUATED.getDescription());
-        }
-
-        List<String> outstanding = new ArrayList<>(StepUpFlowContextUtils.getOutstandingFactors(context));
-        outstanding.removeAll(StepUpFlowContextUtils.getFactorsCompletedInFlow(context));
-        if (!outstanding.isEmpty()) {
-            LOG.warn("Refusing the secured operation for flow " + context.getContextIdentifier()
-                    + ": required factors were not performed.");
-            return errorResponse(STATUS_ERROR, StepUpFlowConstants.ErrorMessages.ERROR_CODE_STEP_UP_NOT_SATISFIED,
-                    String.format(StepUpFlowConstants.ErrorMessages.ERROR_CODE_STEP_UP_NOT_SATISFIED.getDescription(),
-                            StepUpFlowContextUtils.joinValues(outstanding)));
+        ExecutorResponse refusal = refuseIfNotAuthenticated(context);
+        if (refusal != null) {
+            return refusal;
         }
 
         if (context.getFlowUser() == null || StringUtils.isBlank(context.getFlowUser().getUserId())) {
@@ -92,20 +81,20 @@ public class SecuredOperationExecutor implements Executor {
                     StepUpFlowConstants.ErrorMessages.ERROR_CODE_NO_SUBJECT.getDescription());
         }
 
-        Map<String, String> updates = collectSeededAttributeValues(context);
+        Map<String, String> updates = collectWritableAttributeValues(context);
         if (updates.isEmpty()) {
             /*
              Reached on the way to the collection page, before the user has entered anything: returning
-             USER_INPUT_REQUIRED here is what causes that page to be shown. It is also what a flow whose form
-             collects a different attribute from the one it was seeded for looks like, so both lists are named to
-             tell the two apart. Claims updated by an earlier step, such as an OTP marking an address verified,
-             appear here too without being anything this operation may write.
+             USER_INPUT_REQUIRED here is what causes that page to be shown. It is also what a step whose form
+             collects a different attribute from the one it may write looks like, so both lists are named to tell
+             the two apart. Claims updated by an earlier step, such as an OTP marking an address verified, appear
+             here too without being anything this operation may write.
              */
             warnIfFormCollectsSomethingElse(context);
             if (LOG.isDebugEnabled()) {
-                LOG.debug("No seeded attribute supplied yet for flow " + context.getContextIdentifier()
-                        + ", asking for input. Seeded attributes: "
-                        + StepUpFlowContextUtils.joinValues(seededAttributes(context)) + ". Claims updated in this "
+                LOG.debug("No attribute supplied yet for flow " + context.getContextIdentifier()
+                        + ", asking for input. Attributes this step may write: "
+                        + StepUpFlowContextUtils.joinValues(writableAttributes(context)) + ". Claims updated in this "
                         + "flow so far: " + (context.getFlowUser() == null ? ""
                         : StepUpFlowContextUtils.joinValues(context.getFlowUser().getUpdatedClaimUris())));
             }
@@ -142,7 +131,7 @@ public class SecuredOperationExecutor implements Executor {
     }
 
     /**
-     * Picks out the values the user supplied for the attributes this flow was seeded for, and nothing else.
+     * Picks out the values the user supplied for the attributes this step may write, and nothing else.
      * <p>
      * The values are read from the flow user rather than from the raw request inputs. The engine validates inputs
      * before a node runs, and in doing so moves every claim URI keyed input onto the flow user and removes it from
@@ -151,15 +140,15 @@ public class SecuredOperationExecutor implements Executor {
      * Only claims the user actually changed in this flow are considered. Claims that were merely loaded onto the
      * flow user, such as the address an OTP was sent to, are not updates and must not be written back.
      */
-    private Map<String, String> collectSeededAttributeValues(FlowExecutionContext context) {
+    private Map<String, String> collectWritableAttributeValues(FlowExecutionContext context) {
 
         Map<String, String> updates = new LinkedHashMap<>();
-        Set<String> seededAttributes = seededAttributes(context);
-        if (seededAttributes.isEmpty() || context.getFlowUser() == null) {
+        Set<String> writableAttributes = writableAttributes(context);
+        if (writableAttributes.isEmpty() || context.getFlowUser() == null) {
             return updates;
         }
         Set<String> updatedClaimUris = context.getFlowUser().getUpdatedClaimUris();
-        for (String attribute : seededAttributes) {
+        for (String attribute : writableAttributes) {
             if (!updatedClaimUris.contains(attribute)) {
                 continue;
             }
@@ -172,7 +161,7 @@ public class SecuredOperationExecutor implements Executor {
     }
 
     /**
-     * Says so when the form that reached this executor collects a claim this flow was not seeded for.
+     * Says so when the form that reached this executor collects a claim this step cannot write.
      * <p>
      * That pairing is what a flow author has to get right by hand, and getting it wrong produces no error: the
      * executor keeps asking for input it will never be given, so the page simply reappears on every submit. The
@@ -197,21 +186,63 @@ public class SecuredOperationExecutor implements Executor {
             }
         }
         boolean collectsClaims = declared.stream().anyMatch(input -> input != null && input.contains("/"));
-        Set<String> seeded = seededAttributes(context);
-        if (!collectsClaims || declared.stream().anyMatch(seeded::contains)) {
+        Set<String> writable = writableAttributes(context);
+        if (!collectsClaims || declared.stream().anyMatch(writable::contains)) {
             return;
         }
-        LOG.warn("Flow " + context.getContextIdentifier() + " was seeded to update "
-                + StepUpFlowContextUtils.joinValues(seeded) + ", but the form reaching the operation step collects "
+        LOG.warn("Flow " + context.getContextIdentifier() + " has an operation step that may write "
+                + StepUpFlowContextUtils.joinValues(writable) + ", but the form reaching it collects "
                 + StepUpFlowContextUtils.joinValues(declared) + ". Nothing will be applied and the step will keep "
                 + "asking for input until the two are the same.");
     }
 
-    private Set<String> seededAttributes(FlowExecutionContext context) {
+    /**
+     * The attributes this step is allowed to write, declared on the node itself.
+     * <p>
+     * Taken from the node rather than from the flow context because the executor sits in the branch that collects
+     * the attribute: the branch already says which attribute it is, so nothing carries it between steps and nothing
+     * can change it on the way.
+     */
+    private Set<String> writableAttributes(FlowExecutionContext context) {
 
-        return StepUpFlowContextUtils.getSeededOperation(context) == null
-                ? Collections.emptySet()
-                : StepUpFlowContextUtils.getSeededOperation(context).getAttributes();
+        return new LinkedHashSet<>(StepUpFlowContextUtils.splitValues(
+                StepUpFlowContextUtils.getExecutorMetadata(context,
+                        StepUpFlowConstants.ExecutorMetadata.OPERATION_ATTRIBUTES)));
+    }
+
+    /**
+     * Refuses the update unless the flow actually authenticated the user.
+     * <p>
+     * The flow is authored so that the authentication steps precede this one, but a flow authored with them in the
+     * wrong order, or with none at all, must fail closed rather than write. Where a decision step has run, its
+     * verdict is honoured; otherwise it is enough that some authenticator completed in this flow.
+     */
+    private ExecutorResponse refuseIfNotAuthenticated(FlowExecutionContext context) {
+
+        Set<String> performed = StepUpFlowContextUtils.getFactorsCompletedInFlow(context);
+
+        if (StepUpFlowContextUtils.isDecisionEvaluated(context)) {
+            List<String> outstanding = new ArrayList<>(StepUpFlowContextUtils.getOutstandingFactors(context));
+            outstanding.removeAll(performed);
+            if (!outstanding.isEmpty()) {
+                LOG.warn("Refusing the secured operation for flow " + context.getContextIdentifier()
+                        + ": required factors were not performed.");
+                return errorResponse(STATUS_ERROR,
+                        StepUpFlowConstants.ErrorMessages.ERROR_CODE_STEP_UP_NOT_SATISFIED,
+                        String.format(
+                                StepUpFlowConstants.ErrorMessages.ERROR_CODE_STEP_UP_NOT_SATISFIED.getDescription(),
+                                StepUpFlowContextUtils.joinValues(outstanding)));
+            }
+            return null;
+        }
+
+        if (performed.isEmpty()) {
+            LOG.warn("Refusing the secured operation for flow " + context.getContextIdentifier()
+                    + ": no authentication was performed in this flow.");
+            return errorResponse(STATUS_ERROR, StepUpFlowConstants.ErrorMessages.ERROR_CODE_NO_FACTOR_PERFORMED,
+                    StepUpFlowConstants.ErrorMessages.ERROR_CODE_NO_FACTOR_PERFORMED.getDescription());
+        }
+        return null;
     }
 
     @Override
@@ -235,7 +266,7 @@ public class SecuredOperationExecutor implements Executor {
     private ExecutorResponse userInputRequiredResponse(FlowExecutionContext context) {
 
         ExecutorResponse response = new ExecutorResponse(STATUS_USER_INPUT_REQUIRED);
-        response.setRequiredData(new ArrayList<>(seededAttributes(context)));
+        response.setRequiredData(new ArrayList<>(writableAttributes(context)));
         return response;
     }
 

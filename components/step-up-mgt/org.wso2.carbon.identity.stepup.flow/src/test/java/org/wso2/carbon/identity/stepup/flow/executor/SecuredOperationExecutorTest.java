@@ -26,13 +26,17 @@ import org.testng.annotations.Test;
 import org.wso2.carbon.identity.core.util.IdentityTenantUtil;
 import org.wso2.carbon.identity.flow.execution.engine.model.ExecutorResponse;
 import org.wso2.carbon.identity.flow.execution.engine.model.FlowExecutionContext;
+import org.wso2.carbon.identity.flow.mgt.model.ExecutorDTO;
+import org.wso2.carbon.identity.flow.mgt.model.NodeConfig;
 import org.wso2.carbon.identity.stepup.flow.TestExecutors;
+import org.wso2.carbon.identity.stepup.flow.constant.StepUpFlowConstants;
 import org.wso2.carbon.identity.stepup.flow.internal.component.StepUpFlowComponentServiceHolder;
 import org.wso2.carbon.user.core.UserRealm;
 import org.wso2.carbon.user.core.common.AbstractUserStoreManager;
 import org.wso2.carbon.user.core.service.RealmService;
 
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.Map;
 
 import static org.mockito.ArgumentMatchers.any;
@@ -50,8 +54,6 @@ import static org.wso2.carbon.identity.flow.execution.engine.Constants.ExecutorS
 import static org.wso2.carbon.identity.flow.execution.engine.Constants.ExecutorStatus.STATUS_ERROR;
 import static org.wso2.carbon.identity.flow.execution.engine.Constants.ExecutorStatus.STATUS_USER_INPUT_REQUIRED;
 import static org.wso2.carbon.identity.stepup.flow.constant.StepUpFlowConstants.ContextProperties.DECISION_EVALUATED;
-import static org.wso2.carbon.identity.stepup.flow.constant.StepUpFlowConstants.ContextProperties.OPERATION_ATTRIBUTES;
-import static org.wso2.carbon.identity.stepup.flow.constant.StepUpFlowConstants.ContextProperties.OPERATION_TYPE;
 import static org.wso2.carbon.identity.stepup.flow.constant.StepUpFlowConstants.ContextProperties.OUTSTANDING_FACTORS;
 
 /**
@@ -90,8 +92,21 @@ public class SecuredOperationExecutorTest {
         context = new FlowExecutionContext();
         context.setTenantDomain("carbon.super");
         context.getFlowUser().setUserId(USER_ID);
-        context.setProperty(OPERATION_TYPE, "UPDATE_PROFILE");
-        context.setProperty(OPERATION_ATTRIBUTES, EMAIL_CLAIM);
+        givenStepWrites(EMAIL_CLAIM);
+    }
+
+    /**
+     * Puts the executor on a node that declares which attribute it may write, the way a collection step in the flow
+     * definition does.
+     */
+    private void givenStepWrites(String attributes) {
+
+        Map<String, String> metadata = new HashMap<>();
+        metadata.put(StepUpFlowConstants.ExecutorMetadata.OPERATION_ATTRIBUTES, attributes);
+        context.setCurrentNode(new NodeConfig.Builder()
+                .id("collection_step")
+                .executorConfig(new ExecutorDTO(StepUpFlowConstants.SECURED_OPERATION_EXECUTOR, metadata))
+                .build());
     }
 
     @AfterMethod
@@ -101,16 +116,42 @@ public class SecuredOperationExecutorTest {
         StepUpFlowComponentServiceHolder.getInstance().setRealmService(null);
     }
 
-    @Test(description = "A flow that reached the update without the decision ever running is refused. Never "
-            + "evaluated must not read the same as evaluated and satisfied.")
-    public void testUnevaluatedDecisionIsRefused() throws Exception {
+    @Test(description = "A flow that reached the update with no authentication performed at all is refused. The "
+            + "flow definition puts the authentication ahead of this step, but one authored without it must fail "
+            + "closed rather than write.")
+    public void testUnauthenticatedFlowIsRefused() throws Exception {
 
         context.getFlowUser().addUpdatedClaim(EMAIL_CLAIM, "new@example.com");
 
         ExecutorResponse response = executor.execute(context);
 
         assertEquals(response.getResult(), STATUS_ERROR);
-        assertEquals(response.getErrorCode(), "SSO-65101");
+        assertEquals(response.getErrorCode(), "SSO-65109");
+        verify(userStoreManager, never()).setUserClaimValuesWithID(anyString(), any(), any());
+    }
+
+    @Test(description = "An authenticator completed in this flow is enough to proceed when no decision step ran.")
+    public void testPerformedFactorSatisfiesTheGuard() throws Exception {
+
+        givenFactorPerformedInFlow(false);
+        context.getFlowUser().addUpdatedClaim(EMAIL_CLAIM, "new@example.com");
+
+        ExecutorResponse response = executor.execute(context);
+
+        assertEquals(response.getResult(), STATUS_COMPLETE);
+        verify(userStoreManager).setUserClaimValuesWithID(eq(USER_ID), any(), any());
+    }
+
+    @Test(description = "A step that declares no attribute writes nothing, whatever the user supplied.")
+    public void testStepWithNoAttributeWritesNothing() throws Exception {
+
+        givenFactorPerformedInFlow();
+        givenStepWrites(null);
+        context.getFlowUser().addUpdatedClaim(EMAIL_CLAIM, "new@example.com");
+
+        ExecutorResponse response = executor.execute(context);
+
+        assertEquals(response.getResult(), STATUS_USER_INPUT_REQUIRED);
         verify(userStoreManager, never()).setUserClaimValuesWithID(anyString(), any(), any());
     }
 
@@ -141,9 +182,9 @@ public class SecuredOperationExecutorTest {
         verify(userStoreManager).setUserClaimValuesWithID(eq(USER_ID), any(), any());
     }
 
-    @Test(description = "Only the attributes the flow was seeded for are written. A value supplied for anything "
-            + "else is ignored rather than applied alongside them.")
-    public void testUnseededAttributeIsNotApplied() throws Exception {
+    @Test(description = "Only the attribute the step declares is written. A value supplied for anything else is "
+            + "ignored rather than applied alongside it, so a form carrying extra claims cannot widen the update.")
+    public void testUndeclaredAttributeIsNotApplied() throws Exception {
 
         givenFactorPerformedInFlow();
         context.getFlowUser().addUpdatedClaim(EMAIL_CLAIM, "new@example.com");
@@ -198,8 +239,15 @@ public class SecuredOperationExecutorTest {
 
     private void givenFactorPerformedInFlow() {
 
-        context.setProperty(DECISION_EVALUATED, Boolean.TRUE);
-        context.setProperty(OUTSTANDING_FACTORS, EMAIL_OTP);
+        givenFactorPerformedInFlow(true);
+    }
+
+    private void givenFactorPerformedInFlow(boolean withDecision) {
+
+        if (withDecision) {
+            context.setProperty(DECISION_EVALUATED, Boolean.TRUE);
+            context.setProperty(OUTSTANDING_FACTORS, EMAIL_OTP);
+        }
         StepUpFlowComponentServiceHolder.getInstance().addExecutor(
                 new TestExecutors.TestAuthenticationExecutor(OTP_EXECUTOR, EMAIL_OTP));
         context.setCompletedNodes(

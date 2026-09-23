@@ -30,7 +30,6 @@ import org.osgi.service.component.annotations.ReferenceCardinality;
 import org.osgi.service.component.annotations.ReferencePolicy;
 import org.wso2.carbon.identity.flow.execution.engine.graph.Executor;
 import org.wso2.carbon.identity.stepup.flow.executor.OperationBranchExecutor;
-import org.wso2.carbon.identity.stepup.flow.executor.OperationSelectionExecutor;
 import org.wso2.carbon.identity.stepup.flow.executor.SecuredOperationCompletionExecutor;
 import org.wso2.carbon.identity.stepup.flow.executor.SecuredOperationExecutor;
 import org.wso2.carbon.identity.stepup.flow.executor.StepUpDecisionExecutor;
@@ -53,7 +52,6 @@ public class StepUpFlowServiceComponent {
 
         try {
             BundleContext bundleContext = context.getBundleContext();
-            bundleContext.registerService(Executor.class.getName(), new OperationSelectionExecutor(), null);
             bundleContext.registerService(Executor.class.getName(), new OperationBranchExecutor(), null);
             bundleContext.registerService(Executor.class.getName(), new StepUpDecisionExecutor(), null);
             bundleContext.registerService(Executor.class.getName(), new SecuredOperationExecutor(), null);
