@@ -1,11 +1,15 @@
 # Step-up authentication for self-service operations — status
 
-Working notes for the step-up implementation. Written 2026-09-21, revised 2026-09-23.
+Working notes for the step-up implementation. Written 2026-09-21, revised 2026-09-25.
 
 **The flow runs end to end on a local pack.** A launch carrying an access token authenticates the user
 with an email OTP, collects the new value, writes it through the user store, and returns to the
 application. The Console lists the flow and opens it in a builder. What remains is under *Still open*
 and *Not started* — none of it blocks exercising the flow.
+
+**Phase 2 is designed and not started.** The launch token becomes a session transfer token issued by
+RFC 8693 token exchange. The reasoning is in section 3, the findings behind it in section 5, and the
+plan and its open decisions in section 6.
 
 Covers what exists, what was decided and why, what is known to be wrong, and what has not been
 started. Everything here was verified against the code unless it says otherwise.
@@ -32,14 +36,20 @@ protected set takes effect on every path at once.
 | Repo | Branch | Commits |
 |---|---|---|
 | `carbon-identity-framework` | `feat/step-up-decision-component` | Phase 1 |
-| `carbon-identity-framework` | `feat/step-up-flow` (off Phase 1) | Phase 3 + fixes |
-| `carbon-identity-framework` | `dev/step-up-local-testing` (off Phase 3) | PoC tooling, not for merge |
+| `carbon-identity-framework` | `feat/step-up-flow` (off Phase 1) | Phase 3 as of 2026-09-21 |
+| `carbon-identity-framework` | `dev/step-up-local-testing` (off Phase 3) | PoC tooling, and everything since 2026-09-21 |
 | `identity-local-auth-emailotp` | `feat/secured-self-service-operations-otp` | the OTP flow type case |
 | `identity-apps` | `feat/secured-self-service-operations-flow` | the accounts page and the Console builder |
 | `identity-api-server` | `feat/secured-self-service-operations-flow-meta` | flow meta for this type |
 
-Nothing is pushed. `dev/step-up-local-testing` contains everything and is what the running pack is
-built from.
+`dev/step-up-local-testing` contains everything and is what the running pack is built from. It and the
+three branches in the other repos are pushed to `madurangasiriwardena` forks. The two feature branches in
+this repo are not pushed.
+
+`feat/step-up-flow` is behind. 18 later commits on the dev branch change product code, such as the
+branching, the claim-derived routing and the END node, and none of them are on the feature branch. Some
+of those commits also change the PoC tooling, so they must be split before the feature branch can be
+brought up to date.
 
 ### Phase 1 — decision component (`9df818c`)
 
@@ -101,8 +111,43 @@ request inputs into `userInputData`, never into `properties`.
 not in the framework. Executors are OSGi services and need not live in the engine bundle. The
 framework cannot depend on OAuth.
 
-**Phase 2 deferred.** Phase 3 was built first at the customer's request, with an access token standing
-in for the launch token.
+**Phase 3 was built before Phase 2.** The customer asked for it first. An access token stands in for
+the launch token until Phase 2 exists.
+
+**The launch token is a session transfer token, issued by token exchange.** Decided 2026-09-24. The
+design follows Auth0's Native to Web SSO, adapted in the ways below.
+
+*Why a token is needed at all.* The webview cannot be assumed to share the IDP session, so something
+must carry the user from the app into the browser. The app's access token should not be that thing. It
+would travel in a URL, it can be used many times, and it lives for an hour.
+
+*Why not a format of our own.* Auth0's session transfer token already has the properties we need. It is
+opaque, it lasts 60 seconds, it can be used once, and the app gets it from the ordinary token endpoint.
+So Phase 2 issues it through RFC 8693 token exchange instead of a new endpoint.
+
+*Why not OIDC Native SSO.* It moves a login from one native app to another, using an `id_token` and a
+`device_secret`. The spec states that it does not cover a browser session, and the webview never holds
+the `device_secret`. Two of its ideas are kept: a derived token ends with the session it came from, and
+it does not count as a new authentication.
+
+*Why the access token is the subject token, not the refresh token.* Auth0 uses the refresh token. With
+refresh token rotation that would use up the app's refresh token. The app would have to take the new one
+from our response, and a refresh running at the same time could trigger reuse detection and revoke the
+whole token family.
+
+*Why the token is opaque.* Only the server that issues it ever reads it. Single use needs a server row
+anyway, so a random handle that points at the row is simpler than a signed JWT. It also keeps the claims
+out of the URL.
+
+*What is not copied from Auth0.* Auth0's token creates a web SSO session at `/authorize`. Ours opens one
+run of this flow and nothing else, and creates no session cookie. Its `auth_time` is the original
+sign-in time, never the time the transfer token was issued.
+
+*The cost of using the access token.* The app sends its access token to every API it calls, and any of
+those APIs could exchange it and open the flow as the user. Usually that only reaches the OTP, which
+still goes to the user. The exposure is the skip condition. If a recent factor lets the flow skip the
+OTP, an access token alone would be enough to change a protected attribute. The proposed control is
+decision 1 under Phase 2 in section 6.
 
 **Several protected attributes are handled by branching, not by one form that hides fields.** A VIEW
 step with more than one action becomes a decision node implicitly (`GraphBuilder.handleTempNodesInStep`),
@@ -114,11 +159,11 @@ mechanism behind it; see the correction under *Problems found*.
 **The authentication is part of the flow's shape, not a decision taken before it.** A factor is placed
 above the fan-out when every branch requires it, and inside a branch when only that branch does. For the
 current requirement — one email OTP for every protected attribute — everything hoists and the flow is
-eight steps:
+seven steps:
 
 ```
-seed → step_up_otp → operation_router → operation_choice ─┬─ mobile_collection ─┐
-                                                          └─ email_collection ──┴→ completion → END
+seed → step_up_otp → operation_router → operation_choice ─┬─ mobile_collection ─┬→ END
+                                                          └─ email_collection ──┘
 ```
 
 One fan-out, no duplicated authentication, nothing shown twice. The router must sit immediately before
@@ -161,8 +206,9 @@ only ever reaches a different page for the caller's own profile. Which attribute
 written in the flow definition, so a caller naming a branch cannot name an attribute the flow does not
 offer.
 
-This leaves the launch token carrying four things and nothing else: `sub`, `client_id` for the callback
-derivation, `acr`/`amr`/`auth_time` for the skip conditions, and single use with a short expiry.
+This leaves the launch token carrying a short list: `sub`; `client_id`, which names the launching
+application; the session it came from; `acr`/`amr`/`auth_time` for the skip conditions; and single use
+with a short expiry. Section 6 has what is stored and where each value comes from.
 
 **The flow ends at its END node, and the destination comes from the application.** There is no completion
 executor. The engine's own END handling sets `flowStatus` to `COMPLETE`, `stepType` to `REDIRECTION`, and
@@ -194,7 +240,7 @@ STEP_UP_POLICY / step-up-policy
   protectedAttributes = http://wso2.org/claims/mobile,http://wso2.org/claims/emailaddress
 ```
 
-The flow does contain that list — the `operationAttributes` across its nodes — but deriving enforcement
+The flow does contain that list — the claim identifiers on its collection pages — but deriving enforcement
 from it fails open three ways: deleting a branch on a canvas silently unprotects an attribute, a tenant
 that never configured the flow has no protection, and SCIM2 grows a dependency on flow management.
 
@@ -255,12 +301,11 @@ tolerates an action with no declared inputs by debug-logging and continuing. So 
 `/flow/execute` directly can plausibly reach a branch other than the one they were offered. This was
 not confirmed either way and should be.
 
-The design does not rest on the answer. Two checks make a forged branch harmless rather than merely
-unlikely: `OperationSelectionExecutor` refuses a branch that disagrees with the seeded operation, and
-`SecuredOperationExecutor` writes only seeded attributes. Without the first, a user could satisfy the
-factor required for a weakly protected attribute and then steer into the branch of one that requires
-a stronger factor — the decision and the write are on opposite sides of the second fan-out, and only
-the recorded operation ties them together.
+The design does not rest on the answer. The flow has one fan-out, and every edge out of it starts at the
+beginning of a branch. So a forged action can only select another branch from its start, and that
+branch then runs its own factors. `SecuredOperationExecutor` also writes only the fields on its own page.
+A forged action therefore gains nothing that a different `operation` parameter would not, and the caller
+may choose any branch anyway. This holds only while no step inside a branch offers more than one action.
 
 **Most of Phase 1 is now unused, and the reduction has not been made.** With the authentication
 expressed as the flow's shape and the enforcement reduced to a refusal, the decision component's
@@ -362,29 +407,109 @@ instance — are not written back.
 
 ---
 
-## 5. Discovery findings not yet acted on
+## 5. Discovery findings
 
-From the Phase 2 spike, all verified against `identity-oauth2-grant-token-exchange` and
-`identity-inbound-auth-oauth`:
+These back the Phase 2 plan in section 6. The first investigation ran on 2026-09-21. The second ran on
+2026-09-24 against `identity-oauth2-grant-token-exchange` at `d6c22d9` (1.4.9-SNAPSHOT) and
+`identity-inbound-auth-oauth` at `21e9c5d9f2` (7.5.89-SNAPSHOT, master as of 2026-09-22). All of it was
+read from source. None of it was run.
 
-- Token exchange **neither preserves nor recomputes** `acr` and `auth_time` — the words do not appear
-  in the component at all. The failure mode the design most feared, stamping `auth_time = now`, does
-  not exist and cannot appear by accident.
-- `requested_token_type` accepts only `…:jwt` and `…:access_token`. The `audience` parameter is parsed
-  and then ignored by the default `validateAudience`, which checks the subject token's audience
-  instead. There is an extension seam.
-- The **refresh grant preserves** `auth_time`, reading it from the previous token's authorization grant
-  cache entry. But `auth_time` is emitted only when `max_age` was in the original authorization request
-  or it was requested as an essential claim, so by default the id_token carries none.
-- `JWTTokenIssuer` emits no `acr`, `amr` or `auth_time` on access tokens at all.
+### Token exchange connector
+
+`H` below is `TokenExchangeGrantHandler.java`.
+
+- The connector pins framework `7.8.675` and OAuth `7.5.70`. Its import ranges already admit framework
+  7.11.x, and every framework API it calls still exists in `7.11.205-SNAPSHOT`. Moving the pin looks
+  safe. It has not been built.
+- `subject_token_type=…:access_token` is accepted only when the token is a JWT (H:180-182). **Opaque
+  access tokens are refused.** The connector never calls the OAuth token validation service.
+- A JWT access token issued by this server is accepted. The signature is checked with the tenant
+  certificate. The stored token is then loaded by `jti`, which fails for a token that is not ACTIVE, so
+  that lookup also acts as a revocation check.
+- **Outside impersonation, the subject token's client is not compared with the requesting client.**
+  `client_id` is read only to find the tenant (H:1080-1092). Any client can exchange another client's
+  token.
+- `requested_token_type` is checked by a private method that allows only `…:jwt` and `…:access_token`
+  (H:1151-1158). The issued token is always a standard access token from `super.issue()` (H:858). There
+  is no other kind of output. A new token type means overriding `validateGrant` and `issue`, because the
+  type check and the subject token handling are both private.
+- Two handlers cannot share one grant type. `OAuthServerConfiguration.getSupportedGrantTypes()` keeps
+  one instance per grant name in a map (`OAuthServerConfiguration.java:1332-1364`). The new token type
+  has to go into this handler or a subclass of it.
+- Public clients can use the grant by default. `PublicClientAllowed` defaults to true in
+  `identity.xml.j2`.
+- Token exchange **neither preserves nor recomputes** `acr`, `amr`, `auth_time` or the session id. None
+  of them appear in the component. The failure the design most feared, stamping `auth_time = now`,
+  cannot happen by accident. It also means the connector gives us none of them.
+- Correction to an earlier note here: the `audience` parameter is not simply ignored. `validateAudience`
+  ignores it, but `resolveAudiences` (H:787-814) uses it to set the issued token's `aud`.
+
+**Shared state on the handler. This may be a security issue.** `requestedTokenType` and `impersonator`
+are instance fields (H:110-111). The server holds one handler instance for all tenants, so every request
+in flight shares them.
+
+- `requestedTokenType` is written before it is validated, and it is never reset (H:147, H:178). A
+  request with an invalid value fails but leaves that value behind. Every later request that omits the
+  parameter then fails, in every tenant, until a valid value is sent or the server restarts. A known
+  public `client_id` is enough to trigger it.
+- `impersonator` is written in `validateSubjectToken` (H:336) and compared in `validateActorToken`
+  (H:474). A concurrent request can overwrite it between the two, so the `may_act` check can pass on
+  another request's value.
+
+This is being analysed in a separate session. Fixing it is a prerequisite for Phase 2, because the new
+token type would add a third value carried in the same way. The fix may need to go through WSO2's
+security process, so it should not be pushed publicly until that is decided.
+
+### OAuth core
+
+Paths are under `components/org.wso2.carbon.identity.oauth/src/main/java/org/wso2/carbon/identity/`.
+
+- **Lookup.** `TokenProvider.getVerifiedAccessToken(token, false)` resolves both opaque and JWT access
+  tokens (`oauth2/internal/OAuth2ServiceComponentHolder.java:814-818`, then `OAuth2Util.findAccessToken`
+  at 5380). Introspection uses it. It refuses a token that is not ACTIVE. Two caveats. It does not check
+  the expiry time, so the caller must, with `OAuth2Util.getAccessTokenExpireMillis`. And a token served
+  from `OAuthCache` is returned without its state being checked again.
+- **Sign-in state.** `AuthorizationGrantCacheEntry` holds `authTime`, `selectedAcrValue`, `amrList` and
+  `sessionContextIdentifier` (`oauth/cache/AuthorizationGrantCacheEntry.java:49-119`). The entry is
+  stored against the token id and persisted to `SessionDataStore`. A cache miss reads it from the
+  database. It lives for the refresh token's validity.
+
+  | Grant | What the entry holds |
+  |---|---|
+  | `authorization_code` | Everything, copied from the SSO session |
+  | `refresh_token` | The same entry object, moved to the new token, so the original `auth_time` survives |
+  | implicit and hybrid | `authTime` and `maxAge`, no `amr` |
+  | `password`, `device_code` | User attributes, and for device the session id. No `authTime` or `amr`. |
+  | `client_credentials` | No entry |
+
+  This answers the first Phase 2 open question: the values come from this entry. The `max_age` rule
+  controls what the id_token shows, not what is stored. That `authTime` is always set on the code
+  grant's entry is still to be checked.
+- **Token to session.** `OAuthTokenSessionMappingEventHandler` is on by default. It writes a
+  token-to-session row for the code, refresh and implicit grants, and
+  `AccessTokenDAO.getSessionIdentifierByTokenId` reads it. Logout revokes tokens through the same
+  mapping, so an active subject token is evidence that the session has not ended.
+- **Sender constraint.** `AccessTokenDO.getTokenBinding()` records the binding type (`sso-session`,
+  `cookie`, `certificate`, `DPoP`). The only binding check runs at revocation and userinfo. This repo has
+  no DPoP proof validation. Nothing on a token records whether the client that obtained it was
+  confidential. The exchange request authenticates its own client, so that can be known at exchange
+  time instead.
+- **Introspection** exposes no `auth_time`, `acr` or `amr`. The extension point is
+  `IntrospectionDataProvider`. This matters for Phase 5, not Phase 2.
+- `JWTTokenIssuer` emits no `acr`, `amr` or `auth_time` on access tokens. The id_token emits
+  `auth_time` only when `max_age` was in the original request or `auth_time` was an essential claim.
+- Pre-existing bug: `TokenBindingExpiryEventHandler:399` returns early when one of a session's tokens
+  has no access token, so the rest are not revoked on logout. This weakens the check that the subject
+  token is still active.
+
+### Earlier findings that still stand
+
 - There is **no atomic single-use mechanism** to reuse. The authorization code's enforcement is
   read-then-write: the state check runs against a separately read row, and the deactivation SQL has no
   `AND STATE='ACTIVE'` guard and discards the affected row count.
 - The **impersonation subject token** is a close structural precedent — per-app enablement, per-app
   expiry defaulting to 180 seconds, designed to be handed into the token exchange grant. It is not
   single use and carries no `acr`/`auth_time`.
-- `requestedTokenType` is an instance field on a shared grant handler, assigned per request without
-  reset, and echoed into the `issued_token_type` response parameter. Pre-existing concurrency bug.
 - `TokenExchangeGrantHandler.filterRequestedScopes` (lines 392-402) intersects the requested scopes
   with the subject token's approved scopes, but `handleRequestedScopes` (421-427) applies that only
   when the request carries subject *and* actor tokens or `TokenExchange.LimitScopesToSubjectToken` is
@@ -406,13 +531,72 @@ decision is taken at seed time.
 
 ## 6. Not started
 
-- **Phase 2** — launch token and the real seeding executor. Reduced by the decision above to: a token
-  type carrying `sub`, `client_id`, `acr`/`amr`/`auth_time` and single use with a short expiry; the
-  callback resolved from the launching application's registered redirect URIs; and the executor itself.
-  The two open questions are where `acr`/`auth_time` come from, since the subject token carries none
-  and only the authorization grant cache entry has them, and how single use is enforced, since nothing
-  existing is safe to copy. Blocked first on `identity-oauth2-grant-token-exchange` pinning framework
-  `7.8.675` against the current `7.11.205-SNAPSHOT`: the executor SPI does not exist in that version.
+- **Phase 2** — the launch token and the real seed executor. Designed on 2026-09-24, not started. The
+  reasoning is in section 3 and the findings in section 5.
+
+  ```
+  App ──► POST /oauth2/token
+            grant_type=urn:ietf:params:oauth:grant-type:token-exchange
+            subject_token=<the app's access token, opaque or JWT>
+            subject_token_type=urn:ietf:params:oauth:token-type:access_token
+            requested_token_type=<WSO2 URN, name not decided>
+            + client authentication
+
+     ◄── { access_token: <random handle>, issued_token_type: <that URN>,
+           token_type: N_A, expires_in: 60 }       no refresh token, no id_token
+
+  App ──► opens execution-flow.jsp?flowType=SECURED_SELF_SERVICE_OPERATIONS
+            &launch_token=<handle>&operation=<claim URI>
+  ```
+
+  When the token is issued, in the connector:
+  1. Resolve the subject token through `TokenProvider`, which covers opaque tokens. Then check its
+     expiry, which the lookup does not.
+  2. Refuse if the subject token was not issued to the requesting client.
+  3. Refuse a token with no user, such as one from `client_credentials`.
+  4. Read `authTime`, `selectedAcrValue`, `amrList` and the session id from the grant cache entry. Fall
+     back to the token-to-session mapping when the entry has no session id.
+  5. Record whether the requesting client authenticated as a confidential client.
+  6. Store a row keyed by the hash of a random handle, with a 60 second expiry. Return the handle.
+
+  When the flow uses it, in the seed executor:
+  1. Consume the row atomically: `UPDATE … SET STATE='USED' WHERE HASH=? AND STATE='ACTIVE' AND
+     EXPIRY>?`. Accept only when exactly one row changed.
+  2. Check that the subject token is still active. This ends the transfer token when the user signs out.
+  3. Take the application from the stored `client_id`, not from `spId`.
+  4. Set the flow user and the inherited evidence.
+
+  Where the code goes:
+  - Framework, `step-up-mgt`: the table, and a small service that issues and consumes rows. The table
+    needs scripts for every supported database, and migration scripts.
+  - Connector: the new token type in `TokenExchangeGrantHandler`, and the seed executor, which replaces
+    `AccessTokenSeedExecutor`. This keeps the earlier decision that the seed executor ships with the
+    token it validates. The executor must check the subject token through OAuth, and the framework cannot
+    depend on OAuth. `validateGrant()` detects the new type early. `issue()` returns the handle instead of
+    calling `super.issue()`. The type travels on the request context, not on the handler.
+  - First, before either: move the connector's framework pin from `7.8.675` to 7.11.x, and fix the
+    shared handler state described in section 5. The pin was the earlier blocker, because the executor
+    SPI does not exist in `7.8.675`.
+
+  Decisions still open:
+  1. **Does inherited evidence depend on how the exchange was made?** Proposed: from a confidential
+     client, inherited `acr`/`auth_time` can skip factors. From a public client, the transfer token still
+     replaces sign-in, but every configured factor runs. Nothing reads the evidence until #634 lands, so
+     this does not block building.
+  2. **A new table for the rows?** Proposed, because an atomic consume needs a conditional `UPDATE` and
+     `SessionDataStore` has none.
+  3. **The name of the token type URN.**
+  4. **How the shared-state bug is handled.** It is being analysed in a separate session.
+
+  To check before building:
+  - That `authTime` is always set on the code grant's cache entry, not only when `max_age` is sent.
+  - Whether `amrList` holds authenticator names, which the inherited factors are compared with, or
+    standard `amr` values.
+
+  Recorded but not planned: an app that renders the flow itself through the flow execution API could
+  send its access token in a header and need no transfer token. A browser that shares the IS session
+  cookie from sign-in could be seeded from that session. Neither is reliable enough for the webview
+  case.
 - **Phase 4** — hosted UI beyond what the accounts portal already renders. Smaller than it was: the
   multi-attribute problem it was meant to solve is solved by branching, and the superset form it
   proposed rested on a filter that does not exist.
@@ -420,9 +604,10 @@ decision is taken at seed time.
   Until this exists, protected attributes remain freely updatable over `/scim2/Me` while the flow
   prompts for an OTP. That asymmetry is expected at this stage and is the open scoping question in the
   brief.
-- **Phase 6** — mostly done. The Console lists the flow and opens it in a builder; what is left is an
-  editor for executor configuration, without which a branch can be rearranged but not authored, and a
-  compile of the new package. The API half: a `SecuredSelfServiceOperationsFlowMetaHandler`, its
+- **Phase 6** — mostly done. The Console lists the flow, opens it in a builder and saves it. The
+  branching is derived from claim URIs, so adding a branch for a new attribute needs only the editor.
+  That has not been tried end to end. What is left is the static check that each branch's collection
+  form carries that branch's claim (section 4). The API half: a `SecuredSelfServiceOperationsFlowMetaHandler`, its
   case in `resolveHandler`, and the flow type added to every `flowType` enum in `flow.yaml` and the
   checked-in `FlowApi`. That branch also bumps `carbon.identity.framework.version` from `7.11.195` to
   `7.11.205-SNAPSHOT`, because `Constants.FlowTypes.SECURED_SELF_SERVICE_OPERATIONS` does not exist in
@@ -447,9 +632,11 @@ The flow definition is read once and cached by `SystemDefaultFlowProvider`, so c
 restart even before anyone saves from the editor.
 
 Enable the flow, remembering that `PATCH /flow/config` needs `"flowCompletionConfigs":{}` until the
-`FlowConfigDTO` fix is deployed. Create the `STEP_UP_POLICY` resource type before the resource;
-without a policy the decision returns an empty list and nothing is ever outstanding, so the refusal
-path is not being exercised.
+`FlowConfigDTO` fix is deployed. The shipped flow reads no `STEP_UP_POLICY`. Only
+`StepUpDecisionExecutor` reads it, and the default flow no longer contains that executor.
+
+Until Phase 2, `launch_token` is a JWT access token, read by `AccessTokenSeedExecutor`. Phase 2
+replaces it with the opaque handle from token exchange.
 
 ```
 https://localhost:9443/accounts/execution-flow.jsp
