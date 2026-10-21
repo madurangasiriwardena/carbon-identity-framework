@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (http://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (http://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -34,6 +34,7 @@ import org.wso2.carbon.identity.application.authentication.framework.exception.F
 import org.wso2.carbon.identity.application.authentication.framework.inbound.FrameworkClientException;
 import org.wso2.carbon.identity.core.ServiceURLBuilder;
 import org.wso2.carbon.identity.core.URLBuilderException;
+import org.wso2.carbon.identity.core.util.IdentityKeyStoreResolverUtil;
 import org.wso2.carbon.identity.core.util.IdentityTenantUtil;
 import org.wso2.carbon.identity.core.util.IdentityUtil;
 import org.wso2.carbon.identity.core.util.LambdaExceptionUtils;
@@ -41,6 +42,8 @@ import org.wso2.carbon.utils.multitenancy.MultitenantConstants;
 
 import java.security.Key;
 import java.security.KeyStore;
+import java.security.PrivateKey;
+import java.security.Provider;
 import java.security.cert.Certificate;
 import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
@@ -60,6 +63,8 @@ public class UserAssertionUtils {
     private static final Map<Integer, Certificate> PUBLIC_CERTS = new ConcurrentHashMap<>();
 
     public static final String JWT_USER_ASSERTION_TYPE = "JWT+UA";
+    // Same minimum RSA key size as the Nimbus RSASSASigner.
+    private static final int MIN_RSA_KEY_SIZE = 2048;
 
     /**
      * Generates a signed JWT user assertion with the provided claims set.
@@ -73,11 +78,21 @@ public class UserAssertionUtils {
             throws FrameworkException {
 
         try {
-            RSAPrivateKey privateKey = (RSAPrivateKey) getPrivateKey(tenantDomain);
+            Key key = getPrivateKey(tenantDomain);
+            if (!(key instanceof PrivateKey)) {
+                throw new FrameworkException("The signing key of tenant " + tenantDomain + " is not a private key.");
+            }
+            PrivateKey privateKey = (PrivateKey) key;
             SignedJWT signedJWT = new SignedJWT(
                     new JWSHeader.Builder(JWSAlgorithm.RS256).type(new JOSEObjectType(JWT_USER_ASSERTION_TYPE)).build(),
                     claimsSet);
-            signedJWT.sign(new RSASSASigner(privateKey));
+            RSASSASigner signer = new RSASSASigner(privateKey);
+            if (isKeyMaterialInaccessible(privateKey)) {
+                // A key held in an HSM: Nimbus cannot check its size, and only the key store provider can use it.
+                validateKeySize(getCertificate(tenantDomain), tenantDomain);
+                signer.getJCAContext().setProvider(getKeyStoreProvider(tenantDomain));
+            }
+            signedJWT.sign(signer);
             return signedJWT.serialize();
         } catch (JOSEException e) {
             throw new FrameworkException("Error occurred while signing JWT", e);
@@ -181,12 +196,50 @@ public class UserAssertionUtils {
                 if (MultitenantConstants.SUPER_TENANT_DOMAIN_NAME.equals(tenantDomain)) {
                     return ksm.getDefaultPrivateKey();
                 }
-                String jksName = tenantDomain.trim().replace(".", "-") + ".jks";
-                return ksm.getPrivateKey(jksName, tenantDomain);
+                return ksm.getPrivateKey(IdentityKeyStoreResolverUtil.buildTenantKeyStoreName(tenantDomain),
+                        tenantDomain);
             }));
         } catch (RuntimeException e) {
             Throwable cause = e.getCause() != null ? e.getCause() : e;
             throw new FrameworkException("Error obtaining private key for tenant " + tenantDomain, cause);
+        }
+    }
+
+    /**
+     * Check whether the key material of a private key is not accessible in the JVM, as for keys held in an HSM.
+     */
+    private static boolean isKeyMaterialInaccessible(Key key) {
+
+        return !(key instanceof RSAPrivateKey) || key.getEncoded() == null;
+    }
+
+    private static void validateKeySize(Certificate certificate, String tenantDomain) throws FrameworkException {
+
+        if (certificate == null || !(certificate.getPublicKey() instanceof RSAPublicKey)) {
+            throw new FrameworkException("Cannot determine the RSA signing key size of tenant " + tenantDomain);
+        }
+        int keySize = ((RSAPublicKey) certificate.getPublicKey()).getModulus().bitLength();
+        if (keySize < MIN_RSA_KEY_SIZE) {
+            throw new FrameworkException("The RSA signing key of tenant " + tenantDomain + " is " + keySize +
+                    " bits, less than the minimum " + MIN_RSA_KEY_SIZE + " bits.");
+        }
+    }
+
+    /**
+     * Get the JCA provider of the key store that holds the signing key of the tenant (the primary key store for the
+     * super tenant), so that a signer can use a key held in an HSM.
+     */
+    private static Provider getKeyStoreProvider(String tenantDomain) throws FrameworkException {
+
+        int tenantId = IdentityTenantUtil.getTenantId(tenantDomain);
+        try {
+            KeyStoreManager ksm = KeyStoreManager.getInstance(tenantId);
+            KeyStore keyStore = MultitenantConstants.SUPER_TENANT_DOMAIN_NAME.equals(tenantDomain) ?
+                    ksm.getPrimaryKeyStore() :
+                    ksm.getKeyStore(IdentityKeyStoreResolverUtil.buildTenantKeyStoreName(tenantDomain));
+            return keyStore.getProvider();
+        } catch (Exception e) {
+            throw new FrameworkException("Error obtaining the key store provider for tenant " + tenantDomain, e);
         }
     }
 
@@ -203,8 +256,7 @@ public class UserAssertionUtils {
                 if (MultitenantConstants.SUPER_TENANT_DOMAIN_NAME.equals(tenantDomain)) {
                     return ksm.getDefaultPrimaryCertificate();
                 }
-                String jksName = tenantDomain.trim().replace(".", "-") + ".jks";
-                KeyStore keyStore = ksm.getKeyStore(jksName);
+                KeyStore keyStore = ksm.getKeyStore(IdentityKeyStoreResolverUtil.buildTenantKeyStoreName(tenantDomain));
                 return keyStore.getCertificate(tenantDomain);
             }));
         } catch (RuntimeException e) {

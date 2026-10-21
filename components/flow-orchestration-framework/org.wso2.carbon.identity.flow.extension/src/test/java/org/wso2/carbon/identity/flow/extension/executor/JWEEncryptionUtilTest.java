@@ -18,11 +18,29 @@
 
 package org.wso2.carbon.identity.flow.extension.executor;
 
+import com.nimbusds.jose.EncryptionMethod;
+import com.nimbusds.jose.JWEAlgorithm;
+import com.nimbusds.jose.JWEHeader;
+import com.nimbusds.jose.JWEObject;
+import com.nimbusds.jose.Payload;
+import com.nimbusds.jose.crypto.RSAEncrypter;
+import org.mockito.MockedStatic;
 import org.testng.annotations.Test;
+import org.wso2.carbon.core.util.KeyStoreManager;
 import org.wso2.carbon.identity.action.execution.api.exception.ActionExecutionException;
+import org.wso2.carbon.identity.core.util.IdentityKeyStoreResolverUtil;
+import org.wso2.carbon.identity.core.util.IdentityTenantUtil;
 
+import java.security.KeyPair;
+import java.security.KeyPairGenerator;
+import java.security.KeyStore;
 import java.security.cert.X509Certificate;
+import java.security.interfaces.RSAPublicKey;
 
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockStatic;
+import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
@@ -104,5 +122,56 @@ public class JWEEncryptionUtilTest {
     public void testEncryptWithInvalidCertificateFails() throws ActionExecutionException {
 
         JWEEncryptionUtil.encrypt("secret-value", "not-a-certificate");
+    }
+
+    @Test
+    public void testDecryptWithSoftwareKey() throws Exception {
+
+        KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA");
+        generator.initialize(2048);
+        KeyPair keyPair = generator.generateKeyPair();
+        String jwe = encryptJWE(JWEAlgorithm.RSA_OAEP_256, (RSAPublicKey) keyPair.getPublic());
+
+        try (MockedStatic<IdentityTenantUtil> identityTenantUtil = mockStatic(IdentityTenantUtil.class);
+             MockedStatic<KeyStoreManager> keyStoreManagerStatic = mockStatic(KeyStoreManager.class)) {
+            identityTenantUtil.when(() -> IdentityTenantUtil.getTenantId("carbon.super")).thenReturn(-1234);
+            KeyStoreManager keyStoreManager = mock(KeyStoreManager.class);
+            keyStoreManagerStatic.when(() -> KeyStoreManager.getInstance(anyInt())).thenReturn(keyStoreManager);
+            when(keyStoreManager.getDefaultPrivateKey()).thenReturn(keyPair.getPrivate());
+
+            assertEquals(JWEEncryptionUtil.decrypt(jwe, "carbon.super"), "secret-value");
+        }
+    }
+
+    @Test
+    public void testDecryptWithOpaqueKey() throws Exception {
+
+        // A key held in an HSM. Like SunPKCS11, the test provider has only the PKCS#1 v1.5 RSA cipher.
+        OpaqueRSAKeyTestProvider hsmProvider = new OpaqueRSAKeyTestProvider(2048);
+        String jwe = encryptJWE(JWEAlgorithm.RSA1_5, (RSAPublicKey) hsmProvider.getPublicKey());
+
+        try (MockedStatic<IdentityTenantUtil> identityTenantUtil = mockStatic(IdentityTenantUtil.class);
+             MockedStatic<KeyStoreManager> keyStoreManagerStatic = mockStatic(KeyStoreManager.class);
+             MockedStatic<IdentityKeyStoreResolverUtil> resolverUtil =
+                     mockStatic(IdentityKeyStoreResolverUtil.class)) {
+            identityTenantUtil.when(() -> IdentityTenantUtil.getTenantId("hsm.com")).thenReturn(7);
+            resolverUtil.when(() -> IdentityKeyStoreResolverUtil.buildTenantKeyStoreName("hsm.com"))
+                    .thenReturn("hsm-com.p11");
+            KeyStoreManager keyStoreManager = mock(KeyStoreManager.class);
+            keyStoreManagerStatic.when(() -> KeyStoreManager.getInstance(anyInt())).thenReturn(keyStoreManager);
+            when(keyStoreManager.getPrivateKey("hsm-com.p11", "hsm.com")).thenReturn(hsmProvider.getPrivateKey());
+            KeyStore keyStore = mock(KeyStore.class);
+            when(keyStore.getProvider()).thenReturn(hsmProvider);
+            when(keyStoreManager.getKeyStore("hsm-com.p11")).thenReturn(keyStore);
+
+            assertEquals(JWEEncryptionUtil.decrypt(jwe, "hsm.com"), "secret-value");
+        }
+    }
+
+    private static String encryptJWE(JWEAlgorithm algorithm, RSAPublicKey publicKey) throws Exception {
+
+        JWEObject jwe = new JWEObject(new JWEHeader(algorithm, EncryptionMethod.A256GCM), new Payload("secret-value"));
+        jwe.encrypt(new RSAEncrypter(publicKey));
+        return jwe.serialize();
     }
 }
