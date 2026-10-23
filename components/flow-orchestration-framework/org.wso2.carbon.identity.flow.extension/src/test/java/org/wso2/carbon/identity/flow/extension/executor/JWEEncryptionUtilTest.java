@@ -25,6 +25,7 @@ import com.nimbusds.jose.JWEObject;
 import com.nimbusds.jose.Payload;
 import com.nimbusds.jose.crypto.RSAEncrypter;
 import org.mockito.MockedStatic;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import org.wso2.carbon.core.util.KeyStoreManager;
 import org.wso2.carbon.identity.action.execution.api.exception.ActionExecutionException;
@@ -33,7 +34,7 @@ import org.wso2.carbon.identity.core.util.IdentityTenantUtil;
 
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
-import java.security.KeyStore;
+import java.security.Security;
 import java.security.cert.X509Certificate;
 import java.security.interfaces.RSAPublicKey;
 
@@ -143,12 +144,20 @@ public class JWEEncryptionUtilTest {
         }
     }
 
-    @Test
-    public void testDecryptWithOpaqueKey() throws Exception {
+    @DataProvider(name = "jweAlgorithms")
+    public Object[][] jweAlgorithms() {
 
-        // A key held in an HSM. Like SunPKCS11, the test provider has only the PKCS#1 v1.5 RSA cipher.
-        OpaqueRSAKeyTestProvider hsmProvider = new OpaqueRSAKeyTestProvider(2048);
-        String jwe = encryptJWE(JWEAlgorithm.RSA1_5, (RSAPublicKey) hsmProvider.getPublicKey());
+        return new Object[][]{{JWEAlgorithm.RSA1_5}, {JWEAlgorithm.RSA_OAEP}, {JWEAlgorithm.RSA_OAEP_256}};
+    }
+
+    @Test(dataProvider = "jweAlgorithms")
+    public void testDecryptWithOpaqueKey(JWEAlgorithm algorithm) throws Exception {
+
+        // A key held in an HSM, like SunPKCS11 together with the server's PKCS11 OAEP provider. Registered after the
+        // JDK providers; no provider is named, so JCA selects it because it accepts the key.
+        OpaqueRSAKeyTestProvider hsmProvider = new OpaqueRSAKeyTestProvider(2048, true);
+        String jwe = encryptJWE(algorithm, (RSAPublicKey) hsmProvider.getPublicKey());
+        Security.addProvider(hsmProvider);
 
         try (MockedStatic<IdentityTenantUtil> identityTenantUtil = mockStatic(IdentityTenantUtil.class);
              MockedStatic<KeyStoreManager> keyStoreManagerStatic = mockStatic(KeyStoreManager.class);
@@ -160,11 +169,10 @@ public class JWEEncryptionUtilTest {
             KeyStoreManager keyStoreManager = mock(KeyStoreManager.class);
             keyStoreManagerStatic.when(() -> KeyStoreManager.getInstance(anyInt())).thenReturn(keyStoreManager);
             when(keyStoreManager.getPrivateKey("hsm-com.p11", "hsm.com")).thenReturn(hsmProvider.getPrivateKey());
-            KeyStore keyStore = mock(KeyStore.class);
-            when(keyStore.getProvider()).thenReturn(hsmProvider);
-            when(keyStoreManager.getKeyStore("hsm-com.p11")).thenReturn(keyStore);
 
             assertEquals(JWEEncryptionUtil.decrypt(jwe, "hsm.com"), "secret-value");
+        } finally {
+            Security.removeProvider(hsmProvider.getName());
         }
     }
 

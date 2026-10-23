@@ -41,13 +41,11 @@ import java.nio.CharBuffer;
 import java.nio.charset.StandardCharsets;
 import java.security.Key;
 import java.security.PrivateKey;
-import java.security.Provider;
 import java.security.cert.CertificateException;
 import java.security.cert.CertificateExpiredException;
 import java.security.cert.CertificateFactory;
 import java.security.cert.CertificateNotYetValidException;
 import java.security.cert.X509Certificate;
-import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
 import java.text.ParseException;
 import java.util.Arrays;
@@ -163,11 +161,9 @@ public final class JWEEncryptionUtil {
             }
             PrivateKey privateKey = (PrivateKey) key;
 
+            // The key can be held in an HSM. No provider is named for the key decryption: JCA selects the provider
+            // that accepts the key (SunPKCS11 for RSA1_5, the server's PKCS11 OAEP provider for RSA-OAEP*).
             RSADecrypter decrypter = new RSADecrypter(privateKey);
-            if (!(privateKey instanceof RSAPrivateKey) || privateKey.getEncoded() == null) {
-                // A key held in an HSM: decrypt the content encryption key with the key store provider.
-                decrypter.getJCAContext().setKeyEncryptionProvider(getKeyStoreProvider(tenantDomain));
-            }
             jweObject.decrypt(decrypter);
 
             return jweObject.getPayload().toString();
@@ -196,21 +192,6 @@ public final class JWEEncryptionUtil {
         }
         String tenantKeyStoreName = IdentityKeyStoreResolverUtil.buildTenantKeyStoreName(tenantDomain);
         return keyStoreManager.getPrivateKey(tenantKeyStoreName, tenantDomain);
-    }
-
-    /**
-     * Get the JCA provider of the key store that holds the private key of the tenant (the primary key store for the
-     * super tenant).
-     */
-    private static Provider getKeyStoreProvider(String tenantDomain) throws Exception {
-
-        int tenantId = IdentityTenantUtil.getTenantId(tenantDomain);
-        KeyStoreManager keyStoreManager = KeyStoreManager.getInstance(tenantId);
-        if (MultitenantConstants.SUPER_TENANT_DOMAIN_NAME.equals(tenantDomain)) {
-            return keyStoreManager.getPrimaryKeyStore().getProvider();
-        }
-        return keyStoreManager.getKeyStore(IdentityKeyStoreResolverUtil.buildTenantKeyStoreName(tenantDomain))
-                .getProvider();
     }
 
     /**
